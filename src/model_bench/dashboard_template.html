@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Bench Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948; --other: #898781;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #0ca30c; --s7: #9085e9; --s8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #0ca30c; --s7: #9085e9; --s8: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 64px; }
+.grid2 > *, .card, .filters label { min-width: 0; }
+select { max-width: 100%; }
+.filters label { flex-wrap: wrap; max-width: 100%; }
+td.nw { white-space: nowrap; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 16px; margin: 0 0 4px; }
+.sub { color: var(--ink-2); font-size: 13px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 12px 0 16px; }
+.filters label { color: var(--ink-2); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+select, input[type=search], button { font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; }
+button { cursor: pointer; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px 14px; }
+.tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .k { color: var(--ink-2); font-size: 12px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 4px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font-size: 11px; }
+svg .lbl { fill: var(--ink-2); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; }
+.mark { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.q { max-width: 420px; white-space: pre-wrap; word-break: break-word; }
+.ans { max-width: 260px; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); font-size: 12px; }
+details summary { cursor: pointer; color: var(--ink-2); }
+.tag { font-size: 11px; color: var(--ink-2); border: 1px solid var(--ring); border-radius: 4px; padding: 0 4px; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); display: none; max-width: 280px; }
+#tip b { font-weight: 600; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Model Bench</h1>
+    <span class="sub" id="gen"></span>
+    <span style="flex:1"></span>
+    <button id="theme" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </header>
+
+  <div class="filters">
+    <label>Tier <select id="f-tier"></select></label>
+    <label>Field <select id="f-field"></select></label>
+    <label>Over-time task <select id="f-task"></select></label>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Score by field</h2>
+      <div class="sub">Latest run per model and task. Bars are percent correct; whiskers are the 95% confidence interval.</div>
+      <div class="legend" id="lg-bars"></div>
+      <div id="c-bars"></div>
+    </section>
+    <section class="card">
+      <h2>Score over time</h2>
+      <div class="sub" id="line-sub">Percent correct per run date for one task.</div>
+      <div class="legend" id="lg-line"></div>
+      <div id="c-line"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Quality vs cost</h2>
+    <div class="sub">Mean score across the tasks each model ran (latest runs) against real API spend. Subscription (via CLI) models have no per-call cost and are listed below the chart.</div>
+    <div id="c-scatter"></div>
+    <div class="note" id="scatter-note"></div>
+  </section>
+
+  <section class="card">
+    <h2>Leaderboard</h2>
+    <div class="sub">Every task and model, latest run in the selected tier. Marks are correct / answered; errors are never scored as wrong.</div>
+    <div class="tablewrap"><table id="t-board"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Runs</h2>
+    <div class="tablewrap"><table id="t-runs"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Questions</h2>
+    <div class="filters" style="margin:6px 0 10px">
+      <label>Run <select id="f-run"></select></label>
+      <label>Show <select id="f-mark">
+        <option value="all">all</option><option value="disagree">models disagree</option>
+        <option value="wrong">any wrong</option><option value="error">any error</option>
+      </select></label>
+      <label>Search <input id="f-q" type="search" placeholder="question text or id"></label>
+    </div>
+    <div class="tablewrap"><table id="t-q"></table></div>
+    <div class="note" id="q-note"></div>
+  </section>
+</main>
+<div id="tip" role="tooltip"></div>
+
+<script id="bench-data" type="application/json">__BENCH_DATA__</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById("bench-data").textContent);
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  // Colour follows the model (fixed order over ALL models), never its rank; past 8 -> "other" grey.
+  const color = (m) => { const i = D.models.indexOf(m); return css(i >= 0 && i < 8 ? "--s" + (i + 1) : "--other"); };
+  const fmtPct = (v) => v == null ? "n/a" : v.toFixed(1) + "%";
+  const fmtDate = (d) => d ? String(d).replace("T", " ").slice(0, 16) : "n/a";
+  const fmtUsd = (v) => v == null ? "quota" : "$" + (v < 0.01 && v > 0 ? v.toFixed(4) : v.toFixed(2));
+
+  $("gen").textContent = "Generated " + fmtDate(D.generated) + " | " + D.runs.length + " runs | " + D.models.length + " models";
+
+  // ---------- theme toggle ----------
+  $("theme").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+    try { localStorage.setItem("mb-theme", dark ? "light" : "dark"); } catch (e) {}
+    draw();
+  };
+  try { const t = localStorage.getItem("mb-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+
+  // ---------- filters ----------
+  const uniq = (a) => [...new Set(a)];
+  const tiers = uniq(D.results.map((r) => r.tier));
+  const fields = uniq(D.results.map((r) => r.field || r.task)).sort();
+  const tasks = uniq(D.results.map((r) => r.task)).sort();
+  const opt = (sel, values, labels) => { sel.innerHTML = values.map((v, i) => `<option value="${esc(v)}">${esc(labels ? labels[i] : v)}</option>`).join(""); };
+  opt($("f-tier"), ["all", ...tiers]);
+  opt($("f-field"), ["all", ...fields]);
+  opt($("f-task"), tasks);
+  opt($("f-run"), D.runs.map((r) => r.run_id), D.runs.map((r) => fmtDate(r.date) + "  " + r.run_id + "  (" + r.models.join(", ") + ")"));
+  ["f-tier", "f-field", "f-task", "f-run", "f-mark"].forEach((id) => $(id).addEventListener("change", draw));
+  $("f-q").addEventListener("input", drawQuestions);
+
+  const inTier = (r) => $("f-tier").value === "all" || r.tier === $("f-tier").value;
+  const inField = (r) => $("f-field").value === "all" || (r.field || r.task) === $("f-field").value;
+  function latest() { // latest result per (model, task) inside the filters
+    const best = {};
+    D.results.filter(inTier).filter(inField).forEach((r) => {
+      const k = r.model + "|" + r.task;
+      if (!best[k] || r.date > best[k].date) best[k] = r;
+    });
+    return Object.values(best);
+  }
+
+  // ---------- tooltip ----------
+  const tip = $("tip");
+  function showTip(ev, html) { tip.innerHTML = html; tip.style.display = "block";
+    const x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(ev.clientY + 14, innerHeight - tip.offsetHeight - 8);
+    tip.style.left = x + "px"; tip.style.top = y + "px"; }
+  const hideTip = () => { tip.style.display = "none"; };
+  const el = (name, attrs, parent) => { const n = document.createElementNS(NS, name);
+    for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+  const txt = (parent, x, y, s, attrs) => { const t = el("text", Object.assign({ x, y }, attrs || {}), parent); t.textContent = s; return t; };
+  const legend = (id, models) => { $(id).innerHTML = models.length > 1 ? models.map((m) =>
+      `<span><i class="sw" style="background:${color(m)}"></i>${esc(m)}</span>`).join("") : ""; };
+
+  function yAxis(svg, x0, x1, y, h, ticks) {
+    ticks.forEach((t) => { const yy = y(t);
+      el("line", { x1: x0, x2: x1, y1: yy, y2: yy, stroke: css("--grid"), "stroke-width": 1 }, svg);
+      txt(svg, x0 - 6, yy + 4, t + "%", { "text-anchor": "end" }); });
+  }
+
+  // ---------- chart 1: grouped bars by field ----------
+  function drawBars() {
+    const box = $("c-bars"); box.innerHTML = "";
+    const rows = latest();
+    if (!rows.length) { box.innerHTML = '<div class="empty">No results in this filter.</div>'; legend("lg-bars", []); return; }
+    const cats = uniq(rows.map((r) => r.task)).sort();
+    const models = D.models.filter((m) => rows.some((r) => r.model === m));
+    legend("lg-bars", models);
+    const W = Math.max(box.clientWidth, 320), H = 260, L = 40, R = 8, T = 10, B = 44;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Score by field, grouped bars" }, box);
+    const y = (v) => T + (H - T - B) * (1 - v / 100);
+    yAxis(svg, L, W - R, y, H, [0, 25, 50, 75, 100]);
+    const gw = (W - L - R) / cats.length, pad = Math.min(16, gw * 0.15);
+    const bw = Math.max(4, Math.min(28, (gw - pad * 2 - (models.length - 1) * 2) / models.length));
+    cats.forEach((c, ci) => {
+      const gx = L + ci * gw + (gw - (bw * models.length + 2 * (models.length - 1))) / 2;
+      const field = (rows.find((r) => r.task === c) || {}).field;
+      txt(svg, L + ci * gw + gw / 2, H - B + 16, c, { "text-anchor": "middle", class: "lbl" });
+      if (field) txt(svg, L + ci * gw + gw / 2, H - B + 30, field, { "text-anchor": "middle" });
+      models.forEach((m, mi) => {
+        const r = rows.find((x) => x.task === c && x.model === m); if (!r || r.score_pct == null) return;
+        const x = gx + mi * (bw + 2), top = y(r.score_pct), base = y(0), h = Math.max(base - top, 1);
+        const rad = Math.min(4, bw / 2, h);
+        el("path", { d: `M${x},${base}V${top + rad}Q${x},${top} ${x + rad},${top}H${x + bw - rad}Q${x + bw},${top} ${x + bw},${top + rad}V${base}Z`, fill: color(m) }, svg);
+        if (r.ci_low_pct != null) { const cx = x + bw / 2;
+          el("line", { x1: cx, x2: cx, y1: y(r.ci_low_pct), y2: y(r.ci_high_pct), stroke: css("--ink-2"), "stroke-width": 1.5 }, svg);
+          [r.ci_low_pct, r.ci_high_pct].forEach((v) => el("line", { x1: cx - 3, x2: cx + 3, y1: y(v), y2: y(v), stroke: css("--ink-2"), "stroke-width": 1.5 }, svg)); }
+        const hit = el("rect", { x: x - 1, y: T, width: bw + 2, height: base - T, fill: "transparent" }, svg);
+        hit.addEventListener("mousemove", (ev) => showTip(ev, `<b>${esc(m)}</b><br>${esc(c)} (${esc(r.field)})<br>` +
+          `Score ${fmtPct(r.score_pct)} [${fmtPct(r.ci_low_pct)}, ${fmtPct(r.ci_high_pct)}]<br>` +
+          `Marks ${r.correct}/${r.answered} | errors ${r.errors} (${fmtPct(r.error_rate_pct)})<br>` +
+          `Thinking ${esc(r.thinking)} | ${esc(r.tier)} | ${fmtDate(r.date)}`));
+        hit.addEventListener("mouseleave", hideTip);
+      });
+    });
+    el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: css("--axis"), "stroke-width": 1 }, svg);
+  }
+
+  // ---------- chart 2: score over time for one task ----------
+  function drawLine() {
+    const box = $("c-line"); box.innerHTML = "";
+    const task = $("f-task").value;
+    const rows = D.results.filter(inTier).filter((r) => r.task === task && r.score_pct != null)
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+    $("line-sub").textContent = "Percent correct per run date for " + task + ".";
+    if (!rows.length) { box.innerHTML = '<div class="empty">No results for this task.</div>'; legend("lg-line", []); return; }
+    const models = D.models.filter((m) => rows.some((r) => r.model === m));
+    legend("lg-line", models);
+    const times = rows.map((r) => Date.parse(r.date));
+    let t0 = Math.min(...times), t1 = Math.max(...times);
+    if (t0 === t1) { t0 -= 86400000; t1 += 86400000; }
+    const W = Math.max(box.clientWidth, 320), H = 260, L = 40, R = 12, T = 10, B = 30;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Score over time, one line per model" }, box);
+    const x = (t) => L + (W - L - R) * (t - t0) / (t1 - t0), y = (v) => T + (H - T - B) * (1 - v / 100);
+    yAxis(svg, L, W - R, y, H, [0, 25, 50, 75, 100]);
+    el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: css("--axis"), "stroke-width": 1 }, svg);
+    [t0, (t0 + t1) / 2, t1].forEach((t, i) => txt(svg, x(t), H - 10, new Date(t).toISOString().slice(0, 10),
+      { "text-anchor": i === 0 ? "start" : i === 2 ? "end" : "middle" }));
+    const pts = [];
+    models.forEach((m) => {
+      const s = rows.filter((r) => r.model === m);
+      if (s.length > 1) el("path", { d: s.map((r, i) => (i ? "L" : "M") + x(Date.parse(r.date)) + "," + y(r.score_pct)).join(""),
+        fill: "none", stroke: color(m), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      s.forEach((r) => { const px = x(Date.parse(r.date)), py = y(r.score_pct);
+        el("circle", { cx: px, cy: py, r: 4.5, fill: color(m), stroke: css("--surface"), "stroke-width": 2 }, svg);
+        pts.push({ px, r }); });
+    });
+    const cross = el("line", { y1: T, y2: y(0), stroke: css("--axis"), "stroke-width": 1, visibility: "hidden" }, svg);
+    const hit = el("rect", { x: L, y: T, width: W - L - R, height: y(0) - T, fill: "transparent" }, svg);
+    hit.addEventListener("mousemove", (ev) => {
+      const b = svg.getBoundingClientRect(), mx = (ev.clientX - b.left) * (W / b.width);
+      let near = pts[0]; pts.forEach((p) => { if (Math.abs(p.px - mx) < Math.abs(near.px - mx)) near = p; });
+      const same = pts.filter((p) => Math.abs(p.px - near.px) < 1);
+      cross.setAttribute("x1", near.px); cross.setAttribute("x2", near.px); cross.setAttribute("visibility", "visible");
+      showTip(ev, `<b>${fmtDate(near.r.date)}</b> | ${esc(near.r.tier)}<br>` + same.map((p) =>
+        `<i class="sw" style="background:${color(p.r.model)}"></i> ${esc(p.r.model)}: ${fmtPct(p.r.score_pct)} ` +
+        `[${fmtPct(p.r.ci_low_pct)}, ${fmtPct(p.r.ci_high_pct)}], ${p.r.correct}/${p.r.answered}`).join("<br>"));
+    });
+    hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+  }
+
+  // ---------- chart 3: quality vs cost ----------
+  function drawScatter() {
+    const box = $("c-scatter"); box.innerHTML = "";
+    const rows = latest(), agg = {};
+    rows.forEach((r) => { if (r.score_pct == null) return;
+      const a = agg[r.model] || (agg[r.model] = { model: r.model, access: r.access, scores: [], cost: 0 });
+      a.scores.push(r.score_pct); a.cost += r.cost_usd || 0; });
+    const all = Object.values(agg).map((a) => Object.assign(a, { score: a.scores.reduce((s, v) => s + v, 0) / a.scores.length }));
+    const priced = all.filter((a) => a.access !== "cli"), cli = all.filter((a) => a.access === "cli");
+    $("scatter-note").textContent = cli.length ? "Via CLI (subscription, no per-call cost): " +
+      cli.map((a) => a.model + " " + a.score.toFixed(1) + "%").join(" | ") : "";
+    if (!priced.length) { box.innerHTML = '<div class="empty">No API or local models in this filter.</div>'; return; }
+    const W = Math.max(box.clientWidth, 320), H = 240, L = 40, R = 16, T = 14, B = 30;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Quality versus cost scatter" }, box);
+    const top = Math.max(...priced.map((a) => a.cost));
+    const cmax = top > 0 ? top * 1.15 : 1; // all local/free: a plain $0-$1 axis instead of repeated $0.0001 ticks
+    const x = (c) => L + (W - L - R) * c / cmax, y = (v) => T + (H - T - B) * (1 - v / 100);
+    yAxis(svg, L, W - R, y, H, [0, 25, 50, 75, 100]);
+    el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: css("--axis"), "stroke-width": 1 }, svg);
+    [0, cmax / 2, cmax].forEach((c, i) => txt(svg, x(c), H - 10, "$" + (c === 0 ? "0" : c.toFixed(c < 0.1 ? 4 : 2)),
+      { "text-anchor": i === 0 ? "start" : i === 2 ? "end" : "middle" }));
+    priced.forEach((a) => { const px = x(a.cost), py = y(a.score);
+      el("circle", { cx: px, cy: py, r: 6, fill: color(a.model), stroke: css("--surface"), "stroke-width": 2 }, svg);
+      txt(svg, px + 9, py + 4, a.model, { class: "lbl" });
+      const hit = el("circle", { cx: px, cy: py, r: 14, fill: "transparent" }, svg);
+      hit.addEventListener("mousemove", (ev) => showTip(ev, `<b>${esc(a.model)}</b><br>Mean score ${a.score.toFixed(1)}% over ${a.scores.length} task(s)<br>API spend ${fmtUsd(a.cost)}`));
+      hit.addEventListener("mouseleave", hideTip); });
+  }
+
+  // ---------- tiles ----------
+  function drawTiles() {
+    const rows = D.results.filter(inTier).filter(inField);
+    const samples = rows.reduce((s, r) => s + r.samples, 0), errors = rows.reduce((s, r) => s + r.errors, 0);
+    const spend = D.runs.filter((r) => $("f-tier").value === "all" || r.tier === $("f-tier").value).reduce((s, r) => s + (r.spend_usd || 0), 0);
+    const tiles = [["Runs", uniq(rows.map((r) => r.run_id)).length], ["Models", uniq(rows.map((r) => r.model)).length],
+      ["Questions answered", samples], ["Error rate", samples ? (100 * errors / samples).toFixed(1) + "%" : "n/a"],
+      ["API spend", "$" + spend.toFixed(4)]];
+    $("tiles").innerHTML = tiles.map(([k, v]) => `<div class="tile"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("");
+  }
+
+  // ---------- tables ----------
+  const markCell = (m) => { const c = { correct: "--good", wrong: "--critical", error: "--warning", unscored: "--muted" }[m] || "--muted";
+    return `<span class="mark"><i class="dot" style="background:${css(c)}"></i>${esc(m)}</span>`; };
+
+  function drawBoard() {
+    const rows = latest().sort((a, b) => a.task < b.task ? -1 : a.task > b.task ? 1 : (b.score_pct || 0) - (a.score_pct || 0));
+    $("t-board").innerHTML = "<thead><tr><th>Field</th><th>Task</th><th>Model</th><th>Access</th><th>Thinking</th>" +
+      "<th class=num>Score</th><th class=num>95% CI</th><th class=num>Marks</th><th class=num>Error rate</th>" +
+      "<th class=num>pass^k</th><th class=num>Agreement</th><th class=num>Cost</th><th class=num>p50 s</th><th>Tier</th><th>Date</th></tr></thead><tbody>" +
+      rows.map((r) => `<tr><td>${esc(r.field)}</td><td>${esc(r.task)}</td>` +
+        `<td class=nw><i class="sw" style="background:${color(r.model)}"></i> ${esc(r.model)}</td>` +
+        `<td>${esc(r.access === "cli" ? "via CLI" : r.access)}</td><td>${esc(r.thinking)}</td>` +
+        `<td class=num><b>${fmtPct(r.score_pct)}</b></td><td class=num>${r.ci_low_pct == null ? "n/a" : fmtPct(r.ci_low_pct) + " - " + fmtPct(r.ci_high_pct)}</td>` +
+        `<td class=num>${r.correct}/${r.answered}</td><td class=num>${fmtPct(r.error_rate_pct)} (${r.errors})</td>` +
+        `<td class=num>${fmtPct(r.pass_k_pct)}</td><td class=num>${fmtPct(r.agreement_pct)}</td>` +
+        `<td class=num>${fmtUsd(r.cost_usd)}</td><td class=num>${r.p50_s == null ? "n/a" : r.p50_s}</td>` +
+        `<td>${esc(r.tier)}</td><td>${fmtDate(r.date)}</td></tr>`).join("") + "</tbody>";
+    if (!rows.length) $("t-board").innerHTML += '<tr><td colspan="15" class="empty">No results in this filter.</td></tr>';
+  }
+
+  function drawRuns() {
+    $("t-runs").innerHTML = "<thead><tr><th>Date</th><th>Run</th><th>Tier</th><th>Status</th><th>Models</th>" +
+      "<th class=num>Questions</th><th class=num>Error rate</th><th class=num>Duration</th><th class=num>API spend</th></tr></thead><tbody>" +
+      D.runs.map((r) => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.run_id)}</td><td>${esc(r.tier)}</td><td>${esc(r.status)}</td>` +
+        `<td>${r.models.map((m) => `<i class="sw" style="background:${color(m)}"></i> ${esc(m)}`).join("<br>")}</td>` +
+        `<td class=num>${r.samples}</td><td class=num>${fmtPct(r.error_rate_pct)}</td>` +
+        `<td class=num>${r.duration_min == null ? "n/a" : r.duration_min + " min"}</td><td class=num>$${(r.spend_usd || 0).toFixed(4)}</td></tr>`).join("") + "</tbody>";
+  }
+
+  function drawQuestions() {
+    const run = $("f-run").value, mode = $("f-mark").value, needle = $("f-q").value.trim().toLowerCase();
+    let qs = D.questions.filter((q) => q.run_id === run).filter(inField);
+    const models = D.models.filter((m) => qs.some((q) => q.answers[m]));
+    qs = qs.filter((q) => {
+      const marks = Object.values(q.answers).map((a) => a.mark);
+      if (mode === "disagree" && new Set(marks).size < 2) return false;
+      if (mode === "wrong" && !marks.includes("wrong")) return false;
+      if (mode === "error" && !marks.includes("error")) return false;
+      return !needle || (q.input + " " + q.sample_id).toLowerCase().includes(needle);
+    });
+    const shown = qs.slice(0, 300);
+    $("q-note").textContent = qs.length > shown.length ? `Showing ${shown.length} of ${qs.length}; narrow with the filters.` : `${qs.length} question(s).`;
+    $("t-q").innerHTML = "<thead><tr><th>Field</th><th>Task</th><th>Id</th><th>Question</th><th>Expected</th>" +
+      models.map((m) => `<th><i class="sw" style="background:${color(m)}"></i> ${esc(m)}</th>`).join("") + "</tr></thead><tbody>" +
+      shown.map((q) => `<tr><td>${esc(q.field)}</td><td>${esc(q.task)}</td><td>${esc(q.sample_id)}</td>` +
+        `<td class="q"><details><summary>${esc(q.input.slice(0, 120))}${q.input.length > 120 ? "..." : ""}</summary>${esc(q.input)}</details></td>` +
+        `<td class="ans">${esc(q.target)}</td>` +
+        models.map((m) => { const a = q.answers[m]; return a ? `<td>${markCell(a.mark)}<details><summary>answer</summary><div class="ans">${esc(a.answer)}</div></details></td>` : "<td>-</td>"; }).join("") +
+        "</tr>").join("") + "</tbody>";
+  }
+
+  function draw() { drawTiles(); drawBars(); drawLine(); drawScatter(); drawBoard(); drawRuns(); drawQuestions(); }
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(draw, 150); });
+  draw();
+})();
+</script>
+</body>
+</html>

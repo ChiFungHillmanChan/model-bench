@@ -20,8 +20,11 @@ def build_db(path, run_id="r1", dirty=False, rows=(), created=None):
          "0.3.291", "0.29.0", "complete", 0.5, "{}"],
     )
     for task, model, access, sid, epoch, value, error, cost, t, out in rows:
-        con.execute("insert into samples values (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    [run_id, task, model, sid, epoch, model, access, 100, out, cost, t, error])
+        con.execute("insert into samples (run_id, task, model_id, sample_id, epoch, reported_model, access,"
+                    " input_tokens, output_tokens, total_cost, total_time, error, input_text, target, answer)"
+                    " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    [run_id, task, model, sid, epoch, model, access, 100, out, cost, t, error,
+                     f"Question {sid}?", "A", "A" if value == 1 else "B"])
         if value is not None:
             con.execute("insert into scores values (?,?,?,?,?,?,?,?)",
                         [run_id, task, model, sid, epoch, "choice", value, "x"])

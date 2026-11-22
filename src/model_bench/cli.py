@@ -167,3 +167,12 @@ def repro() -> None:
     from model_bench.repro import format_repro
 
     typer.echo(format_repro(DB_PATH, REFS_PATH))
+
+
+@app.command()
+def dashboard() -> None:
+    """Write reports/dashboard.html: charts, leaderboard, runs and per-question marks (local file)."""
+    from model_bench.dashboard import write_dashboard
+
+    out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html")
+    typer.echo(f"wrote {out}")

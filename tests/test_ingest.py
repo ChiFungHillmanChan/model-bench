@@ -96,3 +96,11 @@ def test_value_num_from_inspect_letters(two_epoch_run):
     ingest(two_epoch_run / "logs", db)
     values = {v for (v,) in q(db, "select distinct value_num from scores")}
     assert values <= {0.0, 1.0}
+
+
+def test_ingest_keeps_question_target_and_answer(two_epoch_run):
+    db = two_epoch_run / "r.duckdb"
+    ingest(two_epoch_run / "logs", db)
+    rows = q(db, "select sample_id, input_text, target, answer from samples where epoch = 1 order by sample_id")
+    assert rows[0][0] == "a" and rows[0][1] == "Say A" and rows[0][2] == "A"
+    assert rows[0][3]  # mockllm's completion text

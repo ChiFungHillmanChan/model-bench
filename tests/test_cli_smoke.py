@@ -127,3 +127,16 @@ def test_bench_plan_survives_task_load_failure(monkeypatch):
     assert result.exit_code == 0, result.output
     assert "task failed to load: AssertionError: install instruction_following_eval" in result.output
     assert "gpqa_diamond" in result.output
+
+
+def test_bench_dashboard_writes_html(tmp_path, monkeypatch):
+    import model_bench.cli as cli
+    from test_report import build_db, grid
+
+    monkeypatch.setattr(cli, "DB_PATH", build_db(tmp_path / "r.duckdb", rows=grid("m", "api", [1, 0, 1])))
+    monkeypatch.setattr(cli, "REPORTS_DIR", tmp_path / "reports")
+    result = CliRunner().invoke(app, ["dashboard"])
+    assert result.exit_code == 0, result.output
+    out = tmp_path / "reports" / "dashboard.html"
+    assert out.read_text().startswith("<!doctype html>")
+    assert str(out) in result.output
