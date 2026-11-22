@@ -1,7 +1,7 @@
 # Published scores used by `bench repro`. score is a fraction (0-1).
 # Only bare models (api/local). Record the source's stated settings; ours may differ.
-# DeepSeek entries are added at acceptance, once the API reports which model deepseek-chat /
-# deepseek-reasoner currently serve, so the number matches the model actually tested.
+# DeepSeek entries (deepseek-flash = V4.1-Flash-1017, deepseek-v4-pro = V4-Pro-0813) are added once
+# DeepSeek publishes scores for those exact versions.
 references:
   - model_id: ollama-qwen3-8b
     task: gpqa_diamond

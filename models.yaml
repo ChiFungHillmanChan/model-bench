@@ -10,18 +10,20 @@ models:
     role: reference
     sealed_ok: true
 
-  - id: deepseek-chat
+  # DeepSeek: names and peak prices from api-docs.deepseek.com/quick_start/pricing, read 2026-11-22.
+  # Off-peak is half price; peak is used so budget estimates err high. Thinking is on by default.
+  - id: deepseek-flash
     access: api
-    inspect_model: deepseek/deepseek-chat
-    caps: [text, json, tools, "ctx:64000"]
-    price: {input: 0.28, output: 0.42, input_cache_read: 0.028, as_of: 2026-11-22}  # verify at acceptance
+    inspect_model: deepseek/deepseek-flash      # DeepSeek-V4.1-Flash-1017
+    caps: [text, json, tools, reasoning, "ctx:1000000"]
+    price: {input: 0.3, output: 1.2, input_cache_read: 0.006, as_of: 2026-11-22}
     sealed_ok: false
 
-  - id: deepseek-reasoner
+  - id: deepseek-v4-pro
     access: api
-    inspect_model: deepseek/deepseek-reasoner
-    caps: [text, json, reasoning, "ctx:64000"]
-    price: {input: 0.28, output: 0.42, input_cache_read: 0.028, as_of: 2026-11-22}  # verify at acceptance
+    inspect_model: deepseek/deepseek-v4-pro     # DeepSeek-V4-Pro-0813
+    caps: [text, json, tools, reasoning, "ctx:1000000"]
+    price: {input: 1.32, output: 3.96, input_cache_read: 0.044, as_of: 2026-11-22}
     sealed_ok: false
 
   - id: claude-cli-opus

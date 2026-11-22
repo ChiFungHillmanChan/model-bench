@@ -15,17 +15,23 @@ def test_bench_models_lists_registry():
     assert result.exit_code == 0, result.output
     assert "claude-cli-opus" in result.output
     assert "quota" in result.output  # cli models have no price
-    assert "deepseek-chat" in result.output
+    assert "deepseek-flash" in result.output
 
 
-def test_bench_plan_shows_items_skips_and_estimate(monkeypatch):
+def test_bench_plan_shows_items_skips_and_estimate(tmp_path, monkeypatch):
     import model_bench.cli as cli
 
+    (tmp_path / "m.yaml").write_text(
+        cli.MODELS_PATH.read_text()
+        + "  - {id: text-only, access: api, inspect_model: x/y, caps: [text],"
+        " price: {input: 1, output: 1, as_of: 2026-11-22}}\n"
+    )
+    monkeypatch.setattr(cli, "MODELS_PATH", tmp_path / "m.yaml")
     monkeypatch.setattr(cli, "dataset_size", lambda t: 30)
-    result = CliRunner().invoke(app, ["plan", "--models", "deepseek-chat,claude-cli-opus", "--tier", "smoke"])
+    result = CliRunner().invoke(app, ["plan", "--models", "text-only,claude-cli-opus", "--tier", "smoke"])
     assert result.exit_code == 0, result.output
     assert "aime2025" in result.output
-    assert "missing capability: reasoning" in result.output  # deepseek-chat lacks reasoning
+    assert "missing capability: reasoning" in result.output  # text-only lacks reasoning
     assert "Estimated cost: $" in result.output
     assert "Quota: claude-cli-opus: 40 samples" in result.output  # 4 tasks x 10
 
@@ -117,7 +123,7 @@ def test_bench_plan_survives_task_load_failure(monkeypatch):
         return 30
 
     monkeypatch.setattr(cli, "dataset_size", size)
-    result = CliRunner().invoke(app, ["plan", "--models", "deepseek-chat", "--tier", "smoke"])
+    result = CliRunner().invoke(app, ["plan", "--models", "deepseek-flash", "--tier", "smoke"])
     assert result.exit_code == 0, result.output
     assert "task failed to load: AssertionError: install instruction_following_eval" in result.output
     assert "gpqa_diamond" in result.output
