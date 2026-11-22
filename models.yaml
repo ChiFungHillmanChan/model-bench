@@ -6,6 +6,7 @@ models:
     inspect_model: ollama/qwen3:8b
     pinned: null            # weights digest from `ollama show`, recorded at acceptance
     caps: [text, reasoning, json, "ctx:32000"]
+    params: {temperature: 0.6, top_p: 0.95, top_k: 20, max_tokens: 32768}  # Qwen3 report thinking-mode settings
     role: reference
     sealed_ok: true
 

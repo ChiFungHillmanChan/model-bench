@@ -95,3 +95,14 @@ def test_bench_report_and_compare_write_output(tmp_path, monkeypatch):
     assert len(list((tmp_path / "reports").glob("*.md"))) == 1
     result = CliRunner().invoke(app, ["compare", "mock", "mock"])
     assert result.exit_code == 0 and "| tiny |" in result.output
+
+
+def test_bench_repro_prints_table(tmp_path, monkeypatch):
+    import model_bench.cli as cli
+    from test_report import build_db, grid
+
+    monkeypatch.setattr(cli, "DB_PATH", build_db(tmp_path / "r.duckdb", rows=grid("m", "api", [1, 0, 1])))
+    result = CliRunner().invoke(app, ["repro"])
+    assert result.exit_code == 0, result.output
+    assert "# Reproduction check" in result.output
+    assert "ollama-qwen3-8b | gpqa_diamond" in result.output

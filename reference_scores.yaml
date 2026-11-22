@@ -1,0 +1,31 @@
+# Published scores used by `bench repro`. score is a fraction (0-1).
+# Only bare models (api/local). Record the source's stated settings; ours may differ.
+# DeepSeek entries are added at acceptance, once the API reports which model deepseek-chat /
+# deepseek-reasoner currently serve, so the number matches the model actually tested.
+references:
+  - model_id: ollama-qwen3-8b
+    task: gpqa_diamond
+    score: 0.620
+    source_url: https://arxiv.org/abs/2505.09388
+    source_kind: provider
+    settings: "Qwen3 Technical Report Table 17, thinking mode; temperature 0.6, top-p 0.95, top-k 20, max output 32768; 10 samples per query averaged"
+    retrieved: 2026-11-22
+    explanation: null
+
+  - model_id: ollama-qwen3-8b
+    task: ifeval
+    score: 0.850
+    source_url: https://arxiv.org/abs/2505.09388
+    source_kind: provider
+    settings: "Qwen3 Technical Report Table 17, thinking mode, IFEval strict prompt; temperature 0.6, top-p 0.95, top-k 20"
+    retrieved: 2026-11-22
+    explanation: null
+
+  - model_id: ollama-qwen3-8b
+    task: aime2025
+    score: 0.673
+    source_url: https://arxiv.org/abs/2505.09388
+    source_kind: provider
+    settings: "Qwen3 Technical Report Table 17, thinking mode; temperature 0.6, top-p 0.95, top-k 20, max output 38912; 64 samples per question averaged"
+    retrieved: 2026-11-22
+    explanation: null

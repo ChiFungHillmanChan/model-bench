@@ -13,6 +13,7 @@ TASKS_PATH = Path("tasks/registry.yaml")
 LOG_ROOT = Path("logs")
 DB_PATH = Path("results.duckdb")
 REPORTS_DIR = Path("reports")
+REFS_PATH = Path("reference_scores.yaml")
 
 app = typer.Typer(no_args_is_help=True, help="Private model benchmark harness.")
 
@@ -68,11 +69,6 @@ def print_plan(p: Plan) -> None:
     typer.echo(f"Estimated cost: ${p.est_cost_usd:.4f} (API models only)")
     for mid, n in p.quota_samples.items():
         typer.echo(f"Quota: {mid}: {n} samples")
-
-
-def _todo() -> None:
-    typer.echo("not implemented")
-    raise typer.Exit(2)
 
 
 @app.command()
@@ -162,5 +158,7 @@ def compare(a: str, b: str, tier: str | None = typer.Option(None)) -> None:
 
 @app.command()
 def repro() -> None:
-    """Compare harness scores with published scores."""
-    _todo()
+    """Compare harness scores with published scores (bare models only)."""
+    from model_bench.repro import format_repro
+
+    typer.echo(format_repro(DB_PATH, REFS_PATH))
