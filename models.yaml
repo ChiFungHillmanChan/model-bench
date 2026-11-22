@@ -4,7 +4,7 @@ models:
   - id: ollama-qwen3-8b
     access: local
     inspect_model: ollama/qwen3:8b
-    pinned: null            # weights digest from `ollama show`, recorded at acceptance
+    pinned: "500a1f067a9f"  # ollama qwen3:8b Q4_K_M, pulled 2026-11-22 (report used full precision)
     caps: [text, reasoning, json, "ctx:32000"]
     params: {temperature: 0.6, top_p: 0.95, top_k: 20, max_tokens: 32768}  # Qwen3 report thinking-mode settings
     role: reference
