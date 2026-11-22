@@ -12,6 +12,7 @@ MODELS_PATH = Path("models.yaml")
 TASKS_PATH = Path("tasks/registry.yaml")
 LOG_ROOT = Path("logs")
 DB_PATH = Path("results.duckdb")
+REPORTS_DIR = Path("reports")
 
 app = typer.Typer(no_args_is_help=True, help="Private model benchmark harness.")
 
@@ -134,15 +135,29 @@ def ingest(rebuild: bool = typer.Option(False, help="Recreate the DB from logs/"
 
 
 @app.command()
-def report() -> None:
-    """Write a report for a run."""
-    _todo()
+def report(run_id: str | None = typer.Option(None, help="Defaults to the latest run")) -> None:
+    """Write a markdown report for a run to reports/ and print it."""
+    import duckdb
+
+    from model_bench.report import report as make_report
+
+    text = make_report(DB_PATH, run_id)
+    if run_id is None:
+        con = duckdb.connect(str(DB_PATH), read_only=True)
+        row = con.execute("select run_id from runs order by created desc limit 1").fetchone()
+        con.close()
+        run_id = row[0] if row else "none"
+    REPORTS_DIR.mkdir(exist_ok=True)
+    (REPORTS_DIR / f"{run_id}.md").write_text(text)
+    typer.echo(text)
 
 
 @app.command()
-def compare() -> None:
-    """Paired comparison of two models."""
-    _todo()
+def compare(a: str, b: str, tier: str | None = typer.Option(None)) -> None:
+    """Paired comparison of two models on shared items."""
+    from model_bench.report import compare as make_compare
+
+    typer.echo(make_compare(DB_PATH, a, b, tier))
 
 
 @app.command()

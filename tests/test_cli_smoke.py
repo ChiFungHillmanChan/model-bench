@@ -79,3 +79,19 @@ def test_bench_ingest_counts_rows(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["ingest", "--rebuild"])
     assert result.exit_code == 0, result.output
     assert "ingested 3 samples" in result.output
+
+
+def test_bench_report_and_compare_write_output(tmp_path, monkeypatch):
+    import model_bench.cli as cli
+
+    _tmp_registries(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli, "DB_PATH", tmp_path / "r.duckdb")
+    monkeypatch.setattr(cli, "REPORTS_DIR", tmp_path / "reports")
+    CliRunner().invoke(app, ["run", "--models", "mock", "--budget", "1", "--yes"])
+    CliRunner().invoke(app, ["ingest"])
+    result = CliRunner().invoke(app, ["report"])
+    assert result.exit_code == 0, result.output
+    assert "## Scores" in result.output
+    assert len(list((tmp_path / "reports").glob("*.md"))) == 1
+    result = CliRunner().invoke(app, ["compare", "mock", "mock"])
+    assert result.exit_code == 0 and "| tiny |" in result.output
