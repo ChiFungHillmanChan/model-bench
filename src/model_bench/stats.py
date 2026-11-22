@@ -44,7 +44,9 @@ def clustered_mean(obs: Obs) -> Estimate:
     if n < 2:
         return Estimate(mean, None, None, None, n, len(obs))
     se = float(means.std(ddof=1) / math.sqrt(n))
-    return Estimate(mean, se, mean - Z95 * se, mean + Z95 * se, n, len(obs))
+    if se == 0:  # a zero-width interval would claim certainty we do not have
+        return Estimate(mean, se, None, None, n, len(obs))
+    return Estimate(mean, se, max(0.0, mean - Z95 * se), min(1.0, mean + Z95 * se), n, len(obs))
 
 
 def paired_diff(a: Obs, b: Obs, n_boot: int = 10000, seed: int = SEED) -> Estimate:
@@ -61,8 +63,11 @@ def paired_diff(a: Obs, b: Obs, n_boot: int = 10000, seed: int = SEED) -> Estima
         return Estimate(mean, None, None, None, n, n_obs)
     rng = np.random.default_rng(seed)
     boots = diffs[rng.integers(0, n, size=(n_boot, n))].mean(axis=1)
+    se = float(boots.std(ddof=1))
+    if se == 0:
+        return Estimate(mean, se, None, None, n, n_obs)
     lo, hi = np.percentile(boots, [2.5, 97.5])
-    return Estimate(mean, float(boots.std(ddof=1)), float(lo), float(hi), n, n_obs)
+    return Estimate(mean, se, max(-1.0, float(lo)), min(1.0, float(hi)), n, n_obs)
 
 
 def mcnemar(a: dict[str, bool], b: dict[str, bool]) -> tuple[int, int, float | None]:

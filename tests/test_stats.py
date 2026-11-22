@@ -12,7 +12,8 @@ def test_clustered_mean_known_values():
     est = clustered_mean(obs({"x": [1, 1], "y": [0, 0], "z": [1, 0]}))
     assert est.mean == pytest.approx(0.5)
     assert est.se == pytest.approx(0.5 / 3**0.5)
-    assert est.ci_low == pytest.approx(0.5 - 1.96 * 0.5 / 3**0.5)
+    assert est.ci_low == 0.0  # 0.5 - 1.96 * se is below 0, clipped
+    assert est.ci_high == 1.0  # 0.5 + 1.96 * se is above 1, clipped
     assert (est.n_items, est.n_obs) == (3, 6)
 
 
@@ -33,10 +34,20 @@ def test_empty_gives_none():
     assert est.mean is None and est.n_items == 0
 
 
-def test_all_identical_scores():
+def test_all_identical_scores_give_no_interval():
     est = clustered_mean(obs({"x": [1], "y": [1], "z": [1]}))
     assert est.mean == 1.0 and est.se == 0.0
-    assert (est.ci_low, est.ci_high) == (1.0, 1.0)
+    assert est.ci_low is None and est.ci_high is None  # zero-width CI would mislead (Review Focus 5)
+
+
+def test_ci_clipped_to_unit_interval():
+    est = clustered_mean(obs({str(i): [1] for i in range(9)} | {"z": [0]}))
+    assert est.ci_high == 1.0 and est.ci_low >= 0.0
+
+
+def test_paired_diff_identical_diffs_give_no_interval():
+    est = paired_diff(obs({"1": [1], "2": [1]}), obs({"1": [0], "2": [0]}))
+    assert est.mean == 1.0 and est.ci_low is None
 
 
 def test_paired_diff_uses_shared_items_only():

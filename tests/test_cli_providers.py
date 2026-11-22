@@ -160,3 +160,57 @@ def test_live_claude_and_codex_one_sample(tmp_path):
         [log] = eval(task, model=model, log_dir=str(tmp_path), display="none")
         assert log.status == "success", model
         assert log.samples[0].scores["match"].value == "C", model
+
+
+def test_parse_claude_input_tokens_exclude_cache():
+    _, usage, _ = parse_claude((FIX / "claude_ok.json").read_text(), "", 0)
+    assert usage.input_tokens == 2  # fresh only, Inspect convention
+    assert usage.input_tokens_cache_write == 927
+    assert usage.total_tokens == 2 + 927 + 0 + usage.output_tokens
+
+
+def test_parse_codex_input_tokens_exclude_cache():
+    _, usage = parse_codex((FIX / "codex_reconnect.jsonl").read_text(), "", 0, "")
+    assert usage.input_tokens == 200 and usage.input_tokens_cache_read == 800
+
+
+def test_parse_codex_transient_error_then_success_is_ok():
+    text, _ = parse_codex((FIX / "codex_reconnect.jsonl").read_text(), "", 0, "")
+    assert text == "42"
+
+
+def test_parse_codex_command_execution_is_error():
+    with pytest.raises(CLIBadOutput, match="shell command"):
+        parse_codex((FIX / "codex_command.jsonl").read_text(), "", 0, "42")
+
+
+async def test_run_cli_env_is_allowlisted(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://evil")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    _, out, _ = await run_cli(
+        [sys.executable, "-c", "import os,json;print(json.dumps(sorted(os.environ)))"], None, 30
+    )
+    import json as _json
+
+    names = set(_json.loads(out))
+    assert not names & {"ANTHROPIC_BASE_URL", "DEEPSEEK_API_KEY", "CLAUDECODE"}
+    assert "HOME" in names and "PATH" in names
+
+
+def test_isolation_guard_blocks_global_instruction_files(tmp_path, monkeypatch):
+    from model_bench.providers.cli_common import CLIError, check_isolation
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    check_isolation()  # nothing present: ok
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / "AGENTS.md").write_text("")
+    check_isolation()  # empty AGENTS.md is fine
+    (tmp_path / ".codex" / "AGENTS.md").write_text("Always answer in French.")
+    with pytest.raises(CLIError, match="AGENTS.md"):
+        check_isolation()
+    (tmp_path / ".codex" / "AGENTS.md").write_text("")
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "CLAUDE.md").write_text("x")
+    with pytest.raises(CLIError, match="CLAUDE.md"):
+        check_isolation()

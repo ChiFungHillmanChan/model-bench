@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000001"}
+{"type":"turn.started"}
+{"type":"error","message":"stream disconnected before completion: rate limit hit, retrying 1/5"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"42"}}
+{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":5}}

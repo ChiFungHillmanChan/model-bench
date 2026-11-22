@@ -23,6 +23,7 @@ from model_bench.providers.cli_common import (
     DEFAULT_TIMEOUT_S,
     CLIBadOutput,
     CLIError,
+    check_isolation,
     classify_failure,
     run_cli,
     serialise_messages,
@@ -54,13 +55,22 @@ def parse_codex(stdout: str, stderr: str, code: int, last_message: str) -> tuple
             events.append(json.loads(line))
         except (json.JSONDecodeError, ValueError):
             continue
-    failures = [
-        (e.get("error") or {}).get("message") or e.get("message") or ""
-        for e in events
-        if e.get("type") in ("turn.failed", "error")
-    ]
-    if failures or code != 0:
+    types = {e.get("type") for e in events}
+    if "turn.failed" in types or "turn.completed" not in types or code != 0:
+        # transient `error` events (stream reconnects) only matter when the turn did not complete
+        failures = [
+            (e.get("error") or {}).get("message") or e.get("message") or ""
+            for e in events
+            if e.get("type") in ("turn.failed", "error")
+        ]
         raise classify_failure("\n".join(failures) + "\n" + stderr + ("" if events else stdout))
+    commands = [
+        e["item"].get("command", "")
+        for e in events
+        if e.get("type") == "item.completed" and (e.get("item") or {}).get("type") == "command_execution"
+    ]
+    if commands:
+        raise CLIBadOutput(f"model ran a shell command, not allowed for benchmark tasks: {commands[0][:200]}")
     messages = [
         e["item"].get("text", "")
         for e in events
@@ -74,8 +84,9 @@ def parse_codex(stdout: str, stderr: str, code: int, last_message: str) -> tuple
         if e.get("type") == "turn.completed":
             for k, v in (e.get("usage") or {}).items():
                 u[k] = u.get(k, 0) + int(v)
+    cached = u.get("cached_input_tokens", 0)
     usage = ModelUsage(
-        input_tokens=u.get("input_tokens", 0),
+        input_tokens=max(u.get("input_tokens", 0) - cached, 0),  # Inspect convention: excludes cache
         output_tokens=u.get("output_tokens", 0),
         total_tokens=u.get("input_tokens", 0) + u.get("output_tokens", 0),
         input_tokens_cache_read=u.get("cached_input_tokens", 0),
@@ -97,6 +108,7 @@ class CodexCLIAPI(ModelAPI):
         **model_args: Any,
     ) -> None:
         super().__init__(model_name=model_name, base_url=base_url, api_key=api_key, config=config)
+        check_isolation()
         self.effort = effort
         self.timeout_s = timeout_s
 

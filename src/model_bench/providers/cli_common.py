@@ -6,10 +6,12 @@ import asyncio
 import os
 import re
 import tempfile
+from pathlib import Path
 
 from inspect_ai.model import ChatMessage, ChatMessageAssistant, ChatMessageSystem
 
-STRIPPED_ENV = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")
+# Only these variables reach a CLI: no API keys, base URLs, provider switches or parent-session vars.
+ENV_ALLOWLIST = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "SHELL")
 DEFAULT_TIMEOUT_S = 600
 
 _LIMIT = re.compile(r"usage limit|hit your limit|limit reached|rate limit|quota", re.I)
@@ -49,6 +51,17 @@ def classify_failure(text: str) -> CLIError:
     return CLIBadOutput(snippet or "empty output")
 
 
+def check_isolation() -> None:
+    """Refuse to run if global instruction files the CLIs cannot switch off are present."""
+    home = Path(os.environ.get("HOME", Path.home()))
+    claude_md = home / ".claude" / "CLAUDE.md"
+    if claude_md.exists():
+        raise CLIError(f"{claude_md} exists; Claude Code would load it into every benchmark call")
+    agents_md = home / ".codex" / "AGENTS.md"
+    if agents_md.exists() and agents_md.read_text().strip():
+        raise CLIError(f"{agents_md} is not empty; Codex would load it into every benchmark call")
+
+
 def serialise_messages(messages: list[ChatMessage]) -> tuple[str | None, str]:
     """(system_prompt, prompt). Multi-turn chats become one prompt with [role] markers."""
     system = [m.text for m in messages if isinstance(m, ChatMessageSystem)]
@@ -61,8 +74,8 @@ def serialise_messages(messages: list[ChatMessage]) -> tuple[str | None, str]:
 
 
 async def run_cli(argv: list[str], stdin: str | None, timeout_s: int) -> tuple[int, str, str]:
-    """Run a CLI in a fresh empty temp dir with provider API keys removed from the env."""
-    env = {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV}
+    """Run a CLI in a fresh empty temp dir with an allowlisted environment."""
+    env = {k: v for k, v in os.environ.items() if k in ENV_ALLOWLIST}
     with tempfile.TemporaryDirectory(prefix="mb-cli-") as cwd:
         proc = await asyncio.create_subprocess_exec(
             *argv,

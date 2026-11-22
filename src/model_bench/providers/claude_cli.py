@@ -20,6 +20,7 @@ from model_bench.providers.cli_common import (
     DEFAULT_TIMEOUT_S,
     CLIBadOutput,
     CLIError,
+    check_isolation,
     classify_failure,
     run_cli,
     serialise_messages,
@@ -54,11 +55,11 @@ def parse_claude(stdout: str, stderr: str, code: int) -> tuple[str, ModelUsage, 
     u = data.get("usage") or {}
     cache_write = u.get("cache_creation_input_tokens", 0)
     cache_read = u.get("cache_read_input_tokens", 0)
-    input_tokens = u.get("input_tokens", 0) + cache_write + cache_read
+    fresh = u.get("input_tokens", 0)  # Inspect convention: input_tokens excludes cache
     usage = ModelUsage(
-        input_tokens=input_tokens,
+        input_tokens=fresh,
         output_tokens=u.get("output_tokens", 0),
-        total_tokens=input_tokens + u.get("output_tokens", 0),
+        total_tokens=fresh + cache_write + cache_read + u.get("output_tokens", 0),
         input_tokens_cache_write=cache_write,
         input_tokens_cache_read=cache_read,
         total_cost=None,  # subscription: no real spend
@@ -79,6 +80,7 @@ class ClaudeCLIAPI(ModelAPI):
         **model_args: Any,
     ) -> None:
         super().__init__(model_name=model_name, base_url=base_url, api_key=api_key, config=config)
+        check_isolation()
         self.effort = effort
         self.timeout_s = timeout_s
 
