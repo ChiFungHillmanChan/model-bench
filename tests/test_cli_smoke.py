@@ -16,3 +16,21 @@ def test_bench_models_lists_registry():
     assert "claude-cli-opus" in result.output
     assert "quota" in result.output  # cli models have no price
     assert "deepseek-chat" in result.output
+
+
+def test_bench_plan_shows_items_skips_and_estimate(monkeypatch):
+    import model_bench.cli as cli
+
+    monkeypatch.setattr(cli, "dataset_size", lambda t: 30)
+    result = CliRunner().invoke(app, ["plan", "--models", "deepseek-chat,claude-cli-opus", "--tier", "smoke"])
+    assert result.exit_code == 0, result.output
+    assert "aime2025" in result.output
+    assert "missing capability: reasoning" in result.output  # deepseek-chat lacks reasoning
+    assert "Estimated cost: $" in result.output
+    assert "Quota: claude-cli-opus: 40 samples" in result.output  # 4 tasks x 10
+
+
+def test_bench_plan_unknown_model_errors():
+    result = CliRunner().invoke(app, ["plan", "--models", "nope", "--tier", "smoke"])
+    assert result.exit_code != 0
+    assert "unknown model: nope" in result.output

@@ -5,7 +5,8 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
-from model_bench.registry import load_models, load_tasks
+from model_bench.planner import Plan, build_plan, dataset_size
+from model_bench.registry import ModelEntry, TaskEntry, load_models, load_tasks
 
 MODELS_PATH = Path("models.yaml")
 TASKS_PATH = Path("tasks/registry.yaml")
@@ -16,6 +17,54 @@ app = typer.Typer(no_args_is_help=True, help="Private model benchmark harness.")
 @app.callback()
 def _main() -> None:
     load_dotenv()
+
+
+def _select_models(spec: str) -> list[ModelEntry]:
+    registry = load_models(MODELS_PATH)
+    if spec == "all":
+        return list(registry.values())
+    out = []
+    for mid in spec.split(","):
+        if mid not in registry:
+            typer.echo(f"unknown model: {mid}")
+            raise typer.Exit(1)
+        out.append(registry[mid])
+    return out
+
+
+def _select_tasks(spec: str | None) -> list[TaskEntry]:
+    registry = load_tasks(TASKS_PATH)
+    if not spec:
+        return list(registry.values())
+    out = []
+    for name in spec.split(","):
+        if name not in registry:
+            typer.echo(f"unknown task: {name}")
+            raise typer.Exit(1)
+        out.append(registry[name])
+    return out
+
+
+def make_plan(models: str, tier: str, tasks: str | None) -> Plan:
+    selected_models = _select_models(models)
+    selected_tasks = [t for t in _select_tasks(tasks) if tier in t.tiers]
+    sizes = {t.name: dataset_size(t) for t in selected_tasks}
+    return build_plan(selected_models, selected_tasks, tier, sizes)
+
+
+def print_plan(p: Plan) -> None:
+    typer.echo(f"Tier: {p.tier}")
+    typer.echo(f"{'model':22} {'task':16} {'items':>6} {'epochs':>6} {'samples':>8} {'est $':>9}")
+    for i in p.items:
+        cost = "quota" if i.est_cost_usd is None else f"{i.est_cost_usd:.4f}"
+        typer.echo(f"{i.model_id:22} {i.task_name:16} {i.n_items:>6} {i.epochs:>6} {i.est_samples:>8} {cost:>9}")
+    if p.skips:
+        typer.echo("Skipped:")
+        for s in p.skips:
+            typer.echo(f"  {s.model_id:22} {s.task_name:16} {s.reason}")
+    typer.echo(f"Estimated cost: ${p.est_cost_usd:.4f} (API models only)")
+    for mid, n in p.quota_samples.items():
+        typer.echo(f"Quota: {mid}: {n} samples")
 
 
 def _todo() -> None:
@@ -33,9 +82,13 @@ def models() -> None:
 
 
 @app.command()
-def plan() -> None:
+def plan(
+    models: str = typer.Option(..., help="Comma-separated model ids, or 'all'"),
+    tier: str = typer.Option("smoke"),
+    tasks: str | None = typer.Option(None, help="Comma-separated task names"),
+) -> None:
     """Dry run: show tasks, items and estimated cost."""
-    _todo()
+    print_plan(make_plan(models, tier, tasks))
 
 
 @app.command()
