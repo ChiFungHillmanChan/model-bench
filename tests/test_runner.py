@@ -201,3 +201,20 @@ def test_manifest_records_finish_time(tmp_path):
     plan, models, tasks = make([mock_model()], [tiny_task()])
     m = go(plan, models, tasks, tmp_path)
     assert m.finished is not None and m.finished >= m.created
+
+
+def test_cli_chunk_sets_explicit_low_concurrency(tmp_path, monkeypatch):
+    # Inspect's default adaptive concurrency ignores ModelAPI.max_connections() (ran 40-80 claude
+    # processes at once); only an explicit max_connections switches it off.
+    seen = {}
+
+    def fake_eval_set(**kw):
+        seen.update(kw)
+        return True, []
+
+    monkeypatch.setattr(runner, "eval_set", fake_eval_set)
+    runner.execute_chunk(tiny_task(), cli_model(), tmp_path, "none")
+    assert seen["max_connections"] == runner.CLI_MAX_CONNECTIONS == 2
+    seen.clear()
+    runner.execute_chunk(tiny_task(), mock_model(), tmp_path, "none")
+    assert "max_connections" not in seen  # API/local keep Inspect's own handling

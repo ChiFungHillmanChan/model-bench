@@ -76,19 +76,21 @@ def serialise_messages(messages: list[ChatMessage]) -> tuple[str | None, str]:
 async def run_cli(argv: list[str], stdin: str | None, timeout_s: int) -> tuple[int, str, str]:
     """Run a CLI in a fresh empty temp dir with an allowlisted environment."""
     env = {k: v for k, v in os.environ.items() if k in ENV_ALLOWLIST}
-    with tempfile.TemporaryDirectory(prefix="mb-cli-") as cwd:
+    with tempfile.TemporaryDirectory(prefix="mb-cli-") as cwd, tempfile.TemporaryFile() as prompt:
+        # The prompt is in a file before the process starts: a pipe written after spawn arrived
+        # late under load and the CLI quit with "no stdin data received in 3s".
+        prompt.write((stdin or "").encode())
+        prompt.seek(0)
         proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
             env=env,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=prompt,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            out, err = await asyncio.wait_for(
-                proc.communicate(stdin.encode() if stdin is not None else None), timeout_s
-            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout_s)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()

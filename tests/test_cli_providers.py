@@ -214,3 +214,27 @@ def test_isolation_guard_blocks_global_instruction_files(tmp_path, monkeypatch):
     (tmp_path / ".claude" / "CLAUDE.md").write_text("x")
     with pytest.raises(CLIError, match="CLAUDE.md"):
         check_isolation()
+
+
+async def test_run_cli_feeds_stdin_from_a_ready_file(monkeypatch):
+    # Under load the CLI gave up after 3s waiting on a pipe we had not written yet
+    # ("no stdin data received in 3s"); a file holds the prompt before the process starts.
+    import asyncio
+
+    import model_bench.providers.cli_common as cc
+
+    seen = {}
+    real = asyncio.create_subprocess_exec
+
+    async def spy(*argv, **kw):
+        stdin = kw["stdin"]
+        seen["is_file"] = hasattr(stdin, "read") and hasattr(stdin, "fileno")
+        seen["content"] = stdin.read() if seen["is_file"] else None
+        if seen["is_file"]:
+            stdin.seek(0)
+        return await real(*argv, **kw)
+
+    monkeypatch.setattr(cc.asyncio, "create_subprocess_exec", spy)
+    code, out, _ = await cc.run_cli(["cat"], "hello prompt", 10)
+    assert seen["is_file"] and seen["content"] in ("hello prompt", b"hello prompt")
+    assert code == 0 and out == "hello prompt"

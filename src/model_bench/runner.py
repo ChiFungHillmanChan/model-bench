@@ -57,11 +57,17 @@ def build_task(entry: TaskEntry, item: PlanItem) -> Task:
     return task_with(task, dataset=dataset, epochs=item.epochs, name=entry.name)
 
 
+# Spec: per-CLI concurrency stays low (1-2). Must be explicit: Inspect's default adaptive
+# concurrency ignores ModelAPI.max_connections() and ran 40-80 CLI processes at once.
+CLI_MAX_CONNECTIONS = 2
+
+
 def execute_chunk(task: Task, model: ModelEntry, log_dir: Path, display: str | None) -> list[EvalLog]:
     kwargs: dict = {}
     if model.access == "cli":
         kwargs["model_args"] = dict(model.params)
         kwargs["fail_on_error"] = False
+        kwargs["max_connections"] = CLI_MAX_CONNECTIONS
     else:
         kwargs.update(model.params)  # GenerateConfig fields (temperature, max_tokens, ...)
     _, logs = eval_set(
