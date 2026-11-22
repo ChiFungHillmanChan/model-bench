@@ -8,7 +8,22 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-from model_bench.stats import Estimate, clustered_mean, majority_correct, mcnemar, paired_diff, pass_hat_k
+import json
+from datetime import datetime
+
+from model_bench.stats import (
+    Estimate,
+    clustered_mean,
+    epoch_agreement,
+    majority_correct,
+    mcnemar,
+    paired_diff,
+    pass_hat_k,
+)
+
+THINKING_KEYS = ("effort", "reasoning_effort", "reasoning_tokens")
+CLI_BINARIES = {"claude-cli": "claude", "codex-cli": "codex", "gemini-cli": "gemini"}
+SHUFFLE_SEED = 20261122
 
 
 def fmt(est: Estimate) -> str:
@@ -72,10 +87,11 @@ def report(db: Path, run_id: str | None = None) -> str:
     if dirty:
         out.append("")
         out.append("WARNING: run from a dirty working tree")
+    out += _settings(con, run_id)
     n_err = con.execute("select count(*) from samples where run_id=? and error is not null", [run_id]).fetchone()[0]
     out += ["", f"errors: {n_err}", "", "## Scores", ""]
-    out.append("| task | model | access | score [95% CI] | n | errors | pass^k | cost_usd | p50_s | p95_s | out_tokens |")
-    out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    out.append("| task | model | access | score [95% CI] | n | errors | pass^k | agreement | cost_usd | p50_s | p95_s | out_tokens |")
+    out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     pairs = con.execute(
         "select task, model_id, any_value(access), count(*) filter (where error is not null),"
         " sum(total_cost), list(total_time), sum(output_tokens), max(epoch)"
@@ -93,7 +109,7 @@ def report(db: Path, run_id: str | None = None) -> str:
         cost_cell = "quota" if access == "cli" else f"{cost or 0:.4f}"
         out.append(
             f"| {task} | {label} | {access} | {fmt(est)} | {est.n_items} | {errors} | "
-            f"{_num(pass_hat_k(obs, epochs))} | {cost_cell} | {_num(p50, 1)} | {_num(p95, 1)} | {out_tokens} |"
+            f"{_num(pass_hat_k(obs, epochs))} | {_num(epoch_agreement(obs))} | {cost_cell} | {_num(p50, 1)} | {_num(p95, 1)} | {out_tokens} |"
         )
         pm = per_model[model]
         pm["access"] = access
@@ -119,6 +135,53 @@ def report(db: Path, run_id: str | None = None) -> str:
         out.append(f"| {model} | {_num(quality)} | {d['cost']:.4f} | {_num(per_correct, 4)} | {'frontier' if frontier else ''} |")
     con.close()
     return "\n".join(out) + "\n"
+
+
+def _settings(con, run_id: str) -> list[str]:
+    """Everything needed to reproduce or trust the run: times, models, thinking, params, items."""
+    (raw,) = con.execute("select manifest_json from runs where run_id=?", [run_id]).fetchone()
+    try:
+        m = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        m = {}
+    if not m.get("models"):
+        return ["", "## Run settings", "", "settings not recorded"]
+    started, finished = m.get("created"), m.get("finished")
+    duration = "n/a"
+    if started and finished:
+        secs = (datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                - datetime.fromisoformat(started.replace("Z", "+00:00"))).total_seconds()
+        duration = f"{secs / 60:.1f} min"
+    out = ["", "## Run settings", "",
+           f"started: {started} | finished: {finished or 'n/a'} | duration: {duration} | "
+           f"budget: ${m.get('budget_usd', 0):.2f} | API spend: ${m.get('spend_usd', 0):.4f}", "",
+           "| model | access | inspect model | reported model | thinking | other params | CLI version | price |",
+           "|---|---|---|---|---|---|---|---|"]
+    clis = m.get("cli_versions") or {}
+    for e in m["models"]:
+        params = e.get("params") or {}
+        thinking = next((str(params[k]) for k in THINKING_KEYS if k in params), "default")
+        other = ", ".join(f"{k}={v}" for k, v in params.items() if k not in THINKING_KEYS)
+        reported = [r for (r,) in con.execute(
+            "select distinct reported_model from samples where run_id=? and model_id=? and reported_model is not null"
+            " order by 1", [run_id, e["id"]]).fetchall()]
+        cli = clis.get(CLI_BINARIES.get(e["inspect_model"].split("/", 1)[0], ""), "")
+        price = e.get("price")
+        if e["access"] == "cli":
+            price_cell = "subscription quota"
+        elif price:
+            price_cell = f"{price['input']:g}/{price['output']:g} per M ({price['as_of']})"
+        else:
+            price_cell = "free (local)"
+        out.append(f"| {e['id']} | {e['access']} | {e['inspect_model']} | {', '.join(reported) or 'n/a'} | "
+                   f"{thinking} | {other} | {cli} | {price_cell} |")
+    out += ["", "| task | tier | items | epochs | seed | version |", "|---|---|---|---|---|---|"]
+    for t in m.get("tasks") or []:
+        spec = (t.get("tiers") or {}).get(m.get("tier"), {})
+        limit = spec.get("limit")
+        out.append(f"| {t['name']} | {m.get('tier')} | {'all' if limit is None else limit} | "
+                   f"{spec.get('epochs', 'n/a')} | {SHUFFLE_SEED} | {t.get('version')} |")
+    return out
 
 
 def _runs_with(con, model: str, tier: str | None) -> list[str]:

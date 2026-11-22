@@ -90,3 +90,11 @@ def test_pass_hat_k_value():
     data = obs({"x": [1, 1, 1], "y": [1, 0, 1], "z": [1, 1, 1], "w": [0, 0, 0]})
     assert pass_hat_k(data, 3) == pytest.approx(0.5)
     assert pass_hat_k(data, 2) == pytest.approx(0.5)
+
+
+def test_epoch_agreement():
+    from model_bench.stats import epoch_agreement
+
+    data = obs({"x": [1, 1, 1], "y": [0, 0, 0], "z": [1, 0, 1], "w": [0, 1, 0]})
+    assert epoch_agreement(data) == pytest.approx(0.5)  # x and y always give the same answer
+    assert epoch_agreement(obs({"x": [1], "y": [0]})) is None  # one epoch: nothing to compare

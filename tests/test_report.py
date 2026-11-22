@@ -112,3 +112,41 @@ def test_compare_paired_diff_and_mcnemar(db):
 
 def test_compare_unknown_model_message(db):
     assert "no runs found for nobody" in compare(db, "nobody", "deepseek-chat")
+
+
+def test_report_run_settings_section(tmp_path):
+    import json
+
+    manifest = {
+        "run_id": "r1", "created": "2026-11-22T10:00:00Z", "finished": "2026-11-22T10:30:00Z",
+        "tier": "smoke", "git_sha": "abc123", "git_dirty": False, "inspect_ai": "0.3.291",
+        "inspect_evals": "0.29.0", "cli_versions": {"claude": "2.1.330 (Claude Code)"},
+        "models": [
+            {"id": "claude-cli-opus", "access": "cli", "inspect_model": "claude-cli/opus",
+             "caps": ["text"], "params": {"effort": "high"}},
+            {"id": "deepseek-chat", "access": "api", "inspect_model": "deepseek/deepseek-chat",
+             "caps": ["text"], "params": {"temperature": 0.6},
+             "price": {"input": 0.28, "output": 0.42, "as_of": "2026-11-22"}},
+        ],
+        "tasks": [{"name": "gpqa", "source": "inspect_evals/gpqa", "category": "r", "needs": ["text"],
+                   "tiers": {"smoke": {"limit": 10, "epochs": 3}}, "split": "test", "version": "1",
+                   "scorer_kind": "deterministic", "est_tokens_per_sample": [1, 1]}],
+        "budget_usd": 2.0, "spend_usd": 0.5, "status": "complete",
+    }
+    db = build_db(tmp_path / "s.duckdb", rows=grid("claude-cli-opus", "cli", [1, 0], epochs=3))
+    con = duckdb.connect(str(db))
+    con.execute("update runs set manifest_json=?", [json.dumps(manifest)])
+    con.close()
+    text = report(db)
+    settings = text.split("## Run settings")[1].split("## Scores")[0]
+    assert "started: 2026-11-22T10:00:00Z" in settings and "duration: 30.0 min" in settings
+    assert "| claude-cli-opus | cli | claude-cli/opus | claude-cli-opus | high | " in settings
+    assert "2.1.330 (Claude Code)" in settings
+    assert "| deepseek-chat | api | deepseek/deepseek-chat | n/a | default | temperature=0.6 |  | 0.28/0.42 per M (2026-11-22) |" in settings
+    assert "| gpqa | smoke | 10 | 3 | 20261122 | 1 |" in settings
+    header = [l for l in text.splitlines() if l.startswith("| task | model")][0]
+    assert "agreement" in header
+
+
+def test_report_without_manifest_still_renders(db):
+    assert "settings not recorded" in report(db)

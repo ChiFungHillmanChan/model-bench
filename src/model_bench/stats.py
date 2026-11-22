@@ -96,3 +96,11 @@ def pass_hat_k(obs: Obs, k: int) -> float | None:
         return None
     ok = sum(1 for vs in items.values() if all(v == 1.0 for _, v in sorted(vs)[:k]))
     return ok / len(items)
+
+
+def epoch_agreement(obs: Obs) -> float | None:
+    """Share of items whose repeated epochs all gave the same score (consistency, right or wrong)."""
+    items = [vs for vs in _by_item(obs).values() if len(vs) >= 2]
+    if not items:
+        return None
+    return sum(1 for vs in items if len({v for _, v in vs}) == 1) / len(items)

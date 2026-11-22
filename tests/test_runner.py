@@ -195,3 +195,9 @@ def test_resume_checks_remaining_estimate_only(tmp_path, monkeypatch):
     assert first.status == "failed"
     second = go(plan, models, tasks, tmp_path, budget_usd=1.0, run_id=first.run_id)  # only 0.6 remains
     assert second.status == "complete"
+
+
+def test_manifest_records_finish_time(tmp_path):
+    plan, models, tasks = make([mock_model()], [tiny_task()])
+    m = go(plan, models, tasks, tmp_path)
+    assert m.finished is not None and m.finished >= m.created

@@ -29,6 +29,7 @@ class BudgetExceeded(RuntimeError):
 class Manifest(BaseModel):
     run_id: str
     created: datetime
+    finished: datetime | None = None
     tier: str
     git_sha: str
     git_dirty: bool
@@ -209,6 +210,7 @@ def run(
         manifest.status = "failed"
         manifest.error = f"{type(e).__name__}: {e}"
     finally:
+        manifest.finished = datetime.now(timezone.utc)
         _save(manifest, run_dir)
         with (log_root / "ledger.jsonl").open("a") as f:
             f.write(json.dumps({
