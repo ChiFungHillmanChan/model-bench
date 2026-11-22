@@ -42,3 +42,4 @@ def tiny():
     return tiny_task
 
 FIXTURES_LIMIT = ROOT / "tests/fixtures/claude_limit.txt"
+FIX_DIR = ROOT / "tests/fixtures"

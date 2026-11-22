@@ -68,3 +68,14 @@ def test_bench_run_yes_runs_and_reports_status(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "status: complete" in result.output
     assert list((tmp_path / "logs").glob("*/manifest.json"))
+
+
+def test_bench_ingest_counts_rows(tmp_path, monkeypatch):
+    import model_bench.cli as cli
+
+    _tmp_registries(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli, "DB_PATH", tmp_path / "r.duckdb")
+    CliRunner().invoke(app, ["run", "--models", "mock", "--budget", "1", "--yes"])
+    result = CliRunner().invoke(app, ["ingest", "--rebuild"])
+    assert result.exit_code == 0, result.output
+    assert "ingested 3 samples" in result.output

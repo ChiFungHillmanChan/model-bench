@@ -11,6 +11,7 @@ from model_bench.registry import ModelEntry, TaskEntry, load_models, load_tasks
 MODELS_PATH = Path("models.yaml")
 TASKS_PATH = Path("tasks/registry.yaml")
 LOG_ROOT = Path("logs")
+DB_PATH = Path("results.duckdb")
 
 app = typer.Typer(no_args_is_help=True, help="Private model benchmark harness.")
 
@@ -124,9 +125,12 @@ def run(
 
 
 @app.command()
-def ingest() -> None:
+def ingest(rebuild: bool = typer.Option(False, help="Recreate the DB from logs/")) -> None:
     """Load Inspect logs into DuckDB."""
-    _todo()
+    from model_bench.ingest import ingest as do_ingest
+
+    n = do_ingest(LOG_ROOT, DB_PATH, rebuild=rebuild)
+    typer.echo(f"ingested {n} samples into {DB_PATH}")
 
 
 @app.command()

@@ -11,6 +11,7 @@ from typing import Literal
 
 from inspect_ai import Task, eval_set, task_with
 from inspect_ai.log import EvalLog, read_eval_log
+from inspect_ai.model import ModelUsage
 from pydantic import BaseModel
 
 from model_bench.planner import Plan, PlanItem, load_inspect_task
@@ -73,24 +74,24 @@ def execute_chunk(task: Task, model: ModelEntry, log_dir: Path, display: str | N
     return [read_eval_log(log.location) for log in logs]
 
 
-def chunk_spend(logs: list[EvalLog], model: ModelEntry) -> float:
-    """Real API spend for a chunk: tokens x registry price. CLI and local models cost 0."""
+def usage_cost(usage: ModelUsage, model: ModelEntry) -> float:
+    """Real API spend for one usage record: tokens x registry price. CLI and local cost 0."""
     if model.access != "api" or model.price is None:
         return 0.0
     p = model.price
-    total = 0.0
-    for log in logs:
-        for usage in (log.stats.model_usage or {}).values():
-            cache_read = usage.input_tokens_cache_read or 0
-            cache_write = usage.input_tokens_cache_write or 0
-            fresh = max(usage.input_tokens - cache_read - cache_write, 0)
-            total += (
-                fresh * p.input
-                + cache_read * (p.input_cache_read or p.input)
-                + cache_write * (p.input_cache_write or p.input)
-                + usage.output_tokens * p.output
-            ) / 1e6
-    return total
+    cache_read = usage.input_tokens_cache_read or 0
+    cache_write = usage.input_tokens_cache_write or 0
+    fresh = max(usage.input_tokens - cache_read - cache_write, 0)
+    return (
+        fresh * p.input
+        + cache_read * (p.input_cache_read or p.input)
+        + cache_write * (p.input_cache_write or p.input)
+        + usage.output_tokens * p.output
+    ) / 1e6
+
+
+def chunk_spend(logs: list[EvalLog], model: ModelEntry) -> float:
+    return sum(usage_cost(u, model) for log in logs for u in (log.stats.model_usage or {}).values())
 
 
 def _quota_hit(logs: list[EvalLog]) -> bool:
