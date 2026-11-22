@@ -26,16 +26,16 @@ models:
     price: {input: 1.32, output: 3.96, input_cache_read: 0.044, as_of: 2026-11-22}
     sealed_ok: false
 
-  - id: claude-cli-opus
+  - id: claude-cli-opus-5-5
     access: cli
-    inspect_model: claude-cli/opus
+    inspect_model: claude-cli/claude-opus-5-5   # exact id, not the moving "opus" alias
     caps: [text, reasoning, json, "ctx:200000"]
     params: {effort: high}
     sealed_ok: true
 
-  - id: claude-cli-sonnet
+  - id: claude-cli-sonnet-5-5
     access: cli
-    inspect_model: claude-cli/sonnet
+    inspect_model: claude-cli/claude-sonnet-5-5
     caps: [text, reasoning, json, "ctx:200000"]
     sealed_ok: true
 
