@@ -52,8 +52,13 @@ def _select_tasks(spec: str | None) -> list[TaskEntry]:
 def make_plan(models: str, tier: str, tasks: str | None) -> Plan:
     selected_models = _select_models(models)
     selected_tasks = [t for t in _select_tasks(tasks) if tier in t.tiers]
-    sizes = {t.name: dataset_size(t) for t in selected_tasks}
-    return build_plan(selected_models, selected_tasks, tier, sizes)
+    sizes, errors = {}, {}
+    for t in selected_tasks:
+        try:
+            sizes[t.name] = dataset_size(t)
+        except Exception as e:  # listed as a skip with its reason, never silently dropped
+            errors[t.name] = f"{type(e).__name__}: {' '.join(str(e).split())}"
+    return build_plan(selected_models, selected_tasks, tier, sizes, errors)
 
 
 def print_plan(p: Plan) -> None:

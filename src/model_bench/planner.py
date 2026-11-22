@@ -61,12 +61,20 @@ def capable(model: ModelEntry, task: TaskEntry) -> str | None:
 
 
 def build_plan(
-    models: list[ModelEntry], tasks: list[TaskEntry], tier: str, dataset_sizes: dict[str, int]
+    models: list[ModelEntry],
+    tasks: list[TaskEntry],
+    tier: str,
+    dataset_sizes: dict[str, int],
+    load_errors: dict[str, str] | None = None,
 ) -> Plan:
     plan = Plan(tier=tier)
+    load_errors = load_errors or {}
     for task in tasks:
         spec = task.tiers.get(tier)
         if spec is None:
+            continue
+        if task.name in load_errors:
+            plan.skips += [Skip(m.id, task.name, f"task failed to load: {load_errors[task.name]}") for m in models]
             continue
         size = dataset_sizes[task.name]
         n_items = size if spec.limit is None else min(spec.limit, size)

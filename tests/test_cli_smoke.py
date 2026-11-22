@@ -106,3 +106,18 @@ def test_bench_repro_prints_table(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "# Reproduction check" in result.output
     assert "ollama-qwen3-8b | gpqa_diamond" in result.output
+
+
+def test_bench_plan_survives_task_load_failure(monkeypatch):
+    import model_bench.cli as cli
+
+    def size(t):
+        if t.name == "ifeval":
+            raise AssertionError("install instruction_following_eval")
+        return 30
+
+    monkeypatch.setattr(cli, "dataset_size", size)
+    result = CliRunner().invoke(app, ["plan", "--models", "deepseek-chat", "--tier", "smoke"])
+    assert result.exit_code == 0, result.output
+    assert "task failed to load: AssertionError: install instruction_following_eval" in result.output
+    assert "gpqa_diamond" in result.output

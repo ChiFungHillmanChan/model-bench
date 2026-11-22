@@ -12,6 +12,9 @@ dependencies = [
     "typer>=0.12",
     "python-dotenv>=1",
     "numpy>=2",
+    # IFEval scorer (inspect_evals extra "ifeval"); not on PyPI, pinned to a commit
+    "instruction_following_eval @ git+https://github.com/josejg/instruction_following_eval@0c495b2f95155e8b10acb919ae283bfb4d5be6e2",
+    "langdetect>=1.0.9",
 ]
 
 [project.scripts]
@@ -26,6 +29,9 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/model_bench"]

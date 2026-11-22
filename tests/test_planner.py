@@ -76,3 +76,13 @@ def test_cli_counts_toward_quota_not_cost():
     assert p.items[0].est_cost_usd is None
     assert p.quota_samples["claude-cli-opus"] == p.items[0].est_samples == 10
     assert p.est_cost_usd == 0
+
+
+def test_task_load_failure_is_skip_not_crash():
+    p = build_plan([model(), model(id="m2")], [task(), task(name="broken")], "smoke", {"t": 10},
+                   load_errors={"broken": "AssertionError: install instruction_following_eval"})
+    assert [i.task_name for i in p.items] == ["t", "t"]
+    assert {(s.model_id, s.reason) for s in p.skips} == {
+        ("m", "task failed to load: AssertionError: install instruction_following_eval"),
+        ("m2", "task failed to load: AssertionError: install instruction_following_eval"),
+    }
