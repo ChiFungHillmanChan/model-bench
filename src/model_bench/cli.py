@@ -176,3 +176,55 @@ def dashboard() -> None:
 
     out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html")
     typer.echo(f"wrote {out}")
+
+
+def _access_for(inspect_model: str) -> str:
+    provider = inspect_model.split("/", 1)[0]
+    return {"claude-cli": "cli", "codex-cli": "cli", "ollama": "local"}.get(provider, "api")
+
+
+@app.command("add-model")
+def add_model(
+    model_id: str = typer.Argument(..., help="New id, e.g. claude-cli-opus-5-6"),
+    model: str = typer.Option(..., "--model", help="Inspect model, e.g. claude-cli/claude-opus-5-6"),
+    like: str | None = typer.Option(None, help="Copy access, caps, params, price from this existing id"),
+    label: str | None = typer.Option(None, help="Display name, e.g. 'Claude Opus 5.6'"),
+    effort: str | None = typer.Option(None, help="Thinking level (CLI: effort; API: reasoning_effort)"),
+    caps: str | None = typer.Option(None, help="Comma list, e.g. text,json,reasoning,ctx:200000"),
+    price_in: float | None = typer.Option(None, help="$ per 1M input tokens (API models)"),
+    price_out: float | None = typer.Option(None, help="$ per 1M output tokens (API models)"),
+) -> None:
+    """Add a model to models.yaml (validated; existing entries and comments untouched)."""
+    from datetime import date
+
+    from model_bench.registry import RegistryError, append_model
+
+    existing = load_models(MODELS_PATH)
+    if like:
+        if like not in existing:
+            raise typer.BadParameter(f"unknown model: {like}", param_hint="--like")
+        entry = existing[like].model_dump(mode="json", exclude_none=True,
+                                          exclude={"id", "pinned", "role", "label", "inspect_model"})
+    else:
+        if not caps:
+            raise typer.BadParameter("give --caps (or --like an existing model)", param_hint="--caps")
+        access = _access_for(model)
+        entry = {"access": access, "sealed_ok": access in ("cli", "local")}
+    entry = {"id": model_id, **({"label": label} if label else {}), "inspect_model": model, **entry}
+    if caps:
+        entry["caps"] = [c.strip() for c in caps.split(",") if c.strip()]
+    else:
+        entry["caps"] = sorted(entry["caps"])
+    if effort:
+        key = "effort" if entry["access"] == "cli" else "reasoning_effort"
+        entry["params"] = {**entry.get("params", {}), key: effort}
+    if price_in is not None or price_out is not None:
+        entry["price"] = {"input": price_in or 0.0, "output": price_out or 0.0, "as_of": date.today()}
+    try:
+        append_model(MODELS_PATH, entry)
+    except RegistryError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"added {model_id} to {MODELS_PATH}")
+    typer.echo(f"try: bench plan --models {model_id} --tier smoke")
+    typer.echo(f"then: bench run --models {model_id} --tier smoke")

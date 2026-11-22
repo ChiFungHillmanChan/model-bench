@@ -57,6 +57,7 @@ class ModelEntry(_Strict):
     price: Price | None = None
     sealed_ok: bool = False
     role: Literal["reference"] | None = None
+    label: str | None = None  # display name in reports, e.g. "Claude Opus 5.5"
 
     _v_caps = field_validator("caps", mode="before")(lambda cls, v: _check_caps(v))
 
@@ -116,3 +117,23 @@ def load_models(path: Path) -> dict[str, ModelEntry]:
 
 def load_tasks(path: Path) -> dict[str, TaskEntry]:
     return _load(path, "tasks", TaskEntry)
+
+
+def append_model(path: Path, entry: dict[str, Any]) -> ModelEntry:
+    """Validate one model entry and append it to the YAML file, keeping comments. Nothing is written on error."""
+    try:
+        model = ModelEntry.model_validate(entry)
+    except ValidationError as e:
+        raise RegistryError("; ".join(err["msg"] for err in e.errors())) from e
+    if model.id in load_models(path):
+        raise RegistryError(f"model {model.id} already exists in {path}")
+    text = Path(path).read_text()
+    block = yaml.safe_dump([entry], sort_keys=False, default_flow_style=None, allow_unicode=True)
+    new = text.rstrip("\n") + "\n\n" + "".join("  " + line for line in block.splitlines(keepends=True))
+    Path(path).write_text(new)
+    try:
+        load_models(path)
+    except RegistryError:
+        Path(path).write_text(text)
+        raise
+    return model

@@ -2,6 +2,7 @@
 # CLI models run through the owner's subscriptions and are labelled "via CLI" in reports.
 models:
   - id: ollama-qwen3-8b
+    label: "Qwen3 8B (Ollama)"
     access: local
     inspect_model: ollama/qwen3:8b
     pinned: "500a1f067a9f"  # ollama qwen3:8b Q4_K_M, pulled 2026-11-22 (report used full precision)
@@ -13,6 +14,7 @@ models:
   # DeepSeek: names and peak prices from api-docs.deepseek.com/quick_start/pricing, read 2026-11-22.
   # Off-peak is half price; peak is used so budget estimates err high. Thinking is on by default.
   - id: deepseek-flash
+    label: "DeepSeek V4.1 Flash"
     access: api
     inspect_model: deepseek/deepseek-flash      # DeepSeek-V4.1-Flash-1017
     caps: [text, json, tools, reasoning, "ctx:1000000"]
@@ -20,6 +22,7 @@ models:
     sealed_ok: false
 
   - id: deepseek-v4-pro
+    label: "DeepSeek V4 Pro"
     access: api
     inspect_model: deepseek/deepseek-v4-pro     # DeepSeek-V4-Pro-0813
     caps: [text, json, tools, reasoning, "ctx:1000000"]
@@ -27,6 +30,7 @@ models:
     sealed_ok: false
 
   - id: claude-cli-opus-5-5
+    label: "Claude Opus 5.5"
     access: cli
     inspect_model: claude-cli/claude-opus-5-5   # exact id, not the moving "opus" alias
     caps: [text, reasoning, json, "ctx:200000"]
@@ -34,12 +38,14 @@ models:
     sealed_ok: true
 
   - id: claude-cli-sonnet-5-5
+    label: "Claude Sonnet 5.5"
     access: cli
     inspect_model: claude-cli/claude-sonnet-5-5
     caps: [text, reasoning, json, "ctx:200000"]
     sealed_ok: true
 
   - id: codex-cli-default
+    label: "GPT-6.2 Astra (Codex)"
     access: cli
     inspect_model: codex-cli/gpt-6.2-astra
     caps: [text, reasoning, json, "ctx:200000"]
