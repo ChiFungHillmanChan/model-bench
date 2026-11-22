@@ -114,3 +114,14 @@ def test_ledger_appended(tmp_path):
     m = go(plan, models, tasks, tmp_path)
     lines = (tmp_path / "logs" / "ledger.jsonl").read_text().splitlines()
     assert json.loads(lines[-1])["run_id"] == m.run_id
+
+
+def test_zero_budget_runs_free_models(tmp_path):
+    from conftest import ROOT
+    from model_bench.registry import ModelEntry
+
+    local = ModelEntry(id="local", access="local", inspect_model="mockllm/model", caps=["text"])
+    plan, models, tasks = make([local], [tiny_task("t1"), tiny_task("t2")])
+    m = go(plan, models, tasks, tmp_path, budget_usd=0.0)
+    assert m.status == "complete"
+    assert m.completed_chunks == ["local__t1", "local__t2"]

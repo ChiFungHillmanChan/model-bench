@@ -168,7 +168,7 @@ def run(
             chunk = f"{item.model_id}__{item.task_name}"
             if chunk in manifest.completed_chunks or item.model_id in manifest.quota_stopped:
                 continue
-            if manifest.spend_usd >= budget_usd:
+            if manifest.spend_usd > 0 and manifest.spend_usd >= budget_usd:
                 manifest.status = "stopped_budget"
                 break
             model = models[item.model_id]
