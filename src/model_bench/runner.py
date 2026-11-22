@@ -49,6 +49,7 @@ def build_task(entry: TaskEntry, item: PlanItem) -> Task:
     """Fresh task, same items for every model and run of a tier, tier epochs applied."""
     task = load_inspect_task(entry)
     dataset = task.dataset
+    dataset.sort(key=lambda s: str(s.id))  # undo any unseeded shuffle inside the task itself
     dataset.shuffle(seed=SHUFFLE_SEED)
     if item.limit is not None:
         dataset = dataset[: item.limit]
@@ -163,6 +164,7 @@ def run(
     run_dir = log_root / manifest.run_id
     _save(manifest, run_dir)
 
+    failures: list[str] = []
     try:
         for item in plan.items:
             chunk = f"{item.model_id}__{item.task_name}"
@@ -174,13 +176,20 @@ def run(
             model = models[item.model_id]
             logs = execute_chunk(build_task(tasks[item.task_name], item), model, run_dir / chunk, display)
             manifest.spend_usd += chunk_spend(logs, model)
+            bad = [log for log in logs if log.status != "success"]
             if _quota_hit(logs):
                 manifest.quota_stopped.append(item.model_id)
+            elif bad or not logs:
+                detail = bad[0].error.message if bad and bad[0].error else "no log written"
+                failures.append(f"{chunk}: {' '.join(detail.split())[:300]}")
             else:
                 manifest.completed_chunks.append(chunk)
             _save(manifest, run_dir)
         else:
-            manifest.status = "stopped_quota" if manifest.quota_stopped else "complete"
+            if failures:
+                manifest.status, manifest.error = "failed", "; ".join(failures)
+            else:
+                manifest.status = "stopped_quota" if manifest.quota_stopped else "complete"
         if manifest.status == "running":
             manifest.status = "stopped_budget"
     except Exception as e:  # recorded, resumable with the same run_id

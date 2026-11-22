@@ -9,10 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TINY = f"local:{ROOT / 'tasks/fixtures/tiny_task.py'}@tiny"
 
 
-def tiny_task(name="tiny", epochs=1, limit=None) -> TaskEntry:
+def tiny_task(name="tiny", epochs=1, limit=None, func="tiny") -> TaskEntry:
     return TaskEntry(
         name=name,
-        source=TINY,
+        source=TINY.replace("@tiny", f"@{func}"),
         category="test",
         needs=["text"],
         tiers={"smoke": TierSpec(limit=limit, epochs=epochs)},

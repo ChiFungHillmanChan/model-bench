@@ -125,3 +125,26 @@ def test_zero_budget_runs_free_models(tmp_path):
     m = go(plan, models, tasks, tmp_path, budget_usd=0.0)
     assert m.status == "complete"
     assert m.completed_chunks == ["local__t1", "local__t2"]
+
+
+def test_same_items_when_task_shuffles_without_seed():
+    from model_bench.runner import build_task
+
+    entry = tiny_task("u", limit=5, func="tiny_unseeded")
+    plan, _, _ = make([mock_model()], [entry])
+    first = [s.id for s in build_task(entry, plan.items[0]).dataset]
+    second = [s.id for s in build_task(entry, plan.items[0]).dataset]
+    assert first == second and len(first) == 5
+
+
+def test_failed_api_chunk_not_marked_complete_and_resumes(tmp_path, monkeypatch):
+    monkeypatch.setenv("MB_TEST_FAIL", "1")
+    plan, models, tasks = make([mock_model()], [tiny_task("t1", func="tiny_flaky")])
+    first = go(plan, models, tasks, tmp_path)
+    assert first.status == "failed"
+    assert first.completed_chunks == []
+    assert "simulated provider error" in (first.error or "")
+    monkeypatch.setenv("MB_TEST_FAIL", "0")
+    second = go(plan, models, tasks, tmp_path, run_id=first.run_id)
+    assert second.status == "complete"
+    assert second.completed_chunks == ["mock__t1"]

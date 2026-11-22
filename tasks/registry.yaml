@@ -16,6 +16,7 @@ tasks:
 
   - name: mmlu_pro
     source: inspect_evals/mmlu_pro
+    task_args: {shuffle: false}  # upstream default shuffles without a seed
     category: knowledge
     needs: [text]
     tiers:
