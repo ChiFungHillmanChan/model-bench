@@ -148,3 +148,50 @@ def test_failed_api_chunk_not_marked_complete_and_resumes(tmp_path, monkeypatch)
     second = go(plan, models, tasks, tmp_path, run_id=first.run_id)
     assert second.status == "complete"
     assert second.completed_chunks == ["mock__t1"]
+
+
+def test_usage_cost_does_not_subtract_cache_twice():
+    from datetime import date
+
+    from inspect_ai.model import ModelUsage
+
+    from model_bench.registry import ModelEntry, Price
+    from model_bench.runner import usage_cost
+
+    m = ModelEntry(id="d", access="api", inspect_model="deepseek/x", caps=["text"],
+                   price=Price(input=1.0, output=2.0, input_cache_read=0.1, as_of=date(2026, 11, 22)))
+    # Inspect convention: input_tokens excludes cached tokens
+    u = ModelUsage(input_tokens=1000, output_tokens=500, total_tokens=2500, input_tokens_cache_read=1000)
+    assert usage_cost(u, m) == pytest.approx((1000 * 1.0 + 1000 * 0.1 + 500 * 2.0) / 1e6)
+
+
+def test_stops_before_chunk_whose_estimate_would_cross_budget(tmp_path, monkeypatch):
+    plan, models, tasks = make([mock_model()], [tiny_task("t1"), tiny_task("t2")])
+    for i, item in enumerate(plan.items):
+        plan.items[i] = item.__class__(**{**item.__dict__, "est_cost_usd": 0.4})
+    plan.est_cost_usd = 0.8
+    monkeypatch.setattr(runner, "chunk_spend", lambda logs, model: 0.7)
+    m = go(plan, models, tasks, tmp_path, budget_usd=1.0)
+    assert m.status == "stopped_budget"
+    assert m.completed_chunks == ["mock__t1"]
+
+
+def test_resume_checks_remaining_estimate_only(tmp_path, monkeypatch):
+    plan, models, tasks = make([mock_model()], [tiny_task("t1"), tiny_task("t2")])
+    real = runner.execute_chunk
+    state = {"n": 0}
+
+    def flaky(task, model, log_dir, display):
+        state["n"] += 1
+        if state["n"] == 2:
+            raise RuntimeError("boom")
+        return real(task, model, log_dir, display)
+
+    monkeypatch.setattr(runner, "execute_chunk", flaky)
+    for i, item in enumerate(plan.items):
+        plan.items[i] = item.__class__(**{**item.__dict__, "est_cost_usd": 0.6})
+    plan.est_cost_usd = 1.2
+    first = go(plan, models, tasks, tmp_path, budget_usd=2.0)
+    assert first.status == "failed"
+    second = go(plan, models, tasks, tmp_path, budget_usd=1.0, run_id=first.run_id)  # only 0.6 remains
+    assert second.status == "complete"

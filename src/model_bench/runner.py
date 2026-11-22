@@ -82,9 +82,9 @@ def usage_cost(usage: ModelUsage, model: ModelEntry) -> float:
     p = model.price
     cache_read = usage.input_tokens_cache_read or 0
     cache_write = usage.input_tokens_cache_write or 0
-    fresh = max(usage.input_tokens - cache_read - cache_write, 0)
+    # Inspect convention: input_tokens already excludes cache reads and writes
     return (
-        fresh * p.input
+        usage.input_tokens * p.input
         + cache_read * (p.input_cache_read or p.input)
         + cache_write * (p.input_cache_write or p.input)
         + usage.output_tokens * p.output
@@ -139,12 +139,24 @@ def run(
     log_root: Path = Path("logs"),
     display: str | None = None,
 ) -> Manifest:
-    if plan.est_cost_usd > budget_usd:
-        raise BudgetExceeded(f"estimated ${plan.est_cost_usd:.4f} exceeds budget ${budget_usd:.4f}")
+    existing = log_root / run_id / "manifest.json" if run_id else None
+    done = (
+        set(Manifest.model_validate_json(existing.read_text()).completed_chunks)
+        if existing and existing.exists() else set()
+    )
+    spent = Manifest.model_validate_json(existing.read_text()).spend_usd if done else 0.0
+    remaining = plan.est_cost_usd if not done else sum(
+        i.est_cost_usd or 0 for i in plan.items if f"{i.model_id}__{i.task_name}" not in done
+    )
+    if spent + remaining > budget_usd:
+        raise BudgetExceeded(
+            f"estimated ${remaining:.4f} (plus ${spent:.4f} already spent) exceeds budget ${budget_usd:.4f}"
+        )
 
-    if run_id and (log_root / run_id / "manifest.json").exists():
-        manifest = Manifest.model_validate_json((log_root / run_id / "manifest.json").read_text())
+    if existing and existing.exists():
+        manifest = Manifest.model_validate_json(existing.read_text())
         manifest.status, manifest.error, manifest.quota_stopped = "running", None, []
+        manifest.budget_usd = budget_usd
     else:
         sha, dirty = _git()
         used_models = [models[mid] for mid in dict.fromkeys(i.model_id for i in plan.items)]
@@ -170,7 +182,8 @@ def run(
             chunk = f"{item.model_id}__{item.task_name}"
             if chunk in manifest.completed_chunks or item.model_id in manifest.quota_stopped:
                 continue
-            if manifest.spend_usd > 0 and manifest.spend_usd >= budget_usd:
+            next_cost = item.est_cost_usd or 0
+            if manifest.spend_usd + next_cost > budget_usd or (0 < manifest.spend_usd >= budget_usd):
                 manifest.status = "stopped_budget"
                 break
             model = models[item.model_id]
