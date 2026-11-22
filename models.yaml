@@ -1,0 +1,43 @@
+# Model registry. Prices are $/million tokens; update by hand with as_of.
+# CLI models run through the owner's subscriptions and are labelled "via CLI" in reports.
+models:
+  - id: ollama-qwen3-8b
+    access: local
+    inspect_model: ollama/qwen3:8b
+    pinned: null            # weights digest from `ollama show`, recorded at acceptance
+    caps: [text, reasoning, json, "ctx:32000"]
+    role: reference
+    sealed_ok: true
+
+  - id: deepseek-chat
+    access: api
+    inspect_model: deepseek/deepseek-chat
+    caps: [text, json, tools, "ctx:64000"]
+    price: {input: 0.28, output: 0.42, input_cache_read: 0.028, as_of: 2026-11-22}  # verify at acceptance
+    sealed_ok: false
+
+  - id: deepseek-reasoner
+    access: api
+    inspect_model: deepseek/deepseek-reasoner
+    caps: [text, json, reasoning, "ctx:64000"]
+    price: {input: 0.28, output: 0.42, input_cache_read: 0.028, as_of: 2026-11-22}  # verify at acceptance
+    sealed_ok: false
+
+  - id: claude-cli-opus
+    access: cli
+    inspect_model: claude-cli/opus
+    caps: [text, reasoning, json, "ctx:200000"]
+    params: {effort: high}
+    sealed_ok: true
+
+  - id: claude-cli-sonnet
+    access: cli
+    inspect_model: claude-cli/sonnet
+    caps: [text, reasoning, json, "ctx:200000"]
+    sealed_ok: true
+
+  - id: codex-cli-default
+    access: cli
+    inspect_model: codex-cli/gpt-6.2-astra
+    caps: [text, reasoning, json, "ctx:200000"]
+    sealed_ok: true

@@ -1,0 +1,54 @@
+# Task registry. needs uses the same capability vocabulary as models.yaml.
+# est_tokens_per_sample = [input, output]; refined from measured runs.
+tasks:
+  - name: gpqa_diamond
+    source: inspect_evals/gpqa_diamond
+    category: reasoning
+    needs: [text]
+    tiers:
+      smoke: {limit: 10, epochs: 1}
+      standard: {limit: 100, epochs: 3}
+      full: {limit: null, epochs: 3}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [1500, 1500]
+
+  - name: mmlu_pro
+    source: inspect_evals/mmlu_pro
+    category: knowledge
+    needs: [text]
+    tiers:
+      smoke: {limit: 10, epochs: 1}
+      standard: {limit: 100, epochs: 3}
+      full: {limit: null, epochs: 3}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [1500, 1500]
+
+  - name: ifeval
+    source: inspect_evals/ifeval
+    category: instruction_following
+    needs: [text]
+    tiers:
+      smoke: {limit: 10, epochs: 1}
+      standard: {limit: 100, epochs: 3}
+      full: {limit: null, epochs: 3}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [1500, 1500]
+
+  - name: aime2025
+    source: inspect_evals/aime2025
+    category: math
+    needs: [text, reasoning]
+    tiers:
+      smoke: {limit: 10, epochs: 1}
+      standard: {limit: null, epochs: 3}
+      full: {limit: null, epochs: 3}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [500, 8000]
