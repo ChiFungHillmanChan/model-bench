@@ -15,6 +15,7 @@ dependencies = [
     # IFEval scorer (inspect_evals extra "ifeval"); not on PyPI, pinned to a commit
     "instruction_following_eval @ git+https://github.com/josejg/instruction_following_eval@0c495b2f95155e8b10acb919ae283bfb4d5be6e2",
     "langdetect>=1.0.9",
+    "openai>=3.57.0",
 ]
 
 [project.scripts]
