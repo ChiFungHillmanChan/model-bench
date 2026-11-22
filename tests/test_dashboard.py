@@ -83,7 +83,8 @@ def test_write_dashboard_is_self_contained(tmp_path):
     html = out.read_text()
     assert html.startswith("<!doctype html>")
     assert not re.search(r"<script[^>]+src=", html)  # no external scripts: file works offline
-    for heading in ["Score by field", "Score over time", "Quality vs cost", "Leaderboard", "Runs", "Questions"]:
+    for heading in ["Bench score", "Time per question", "Cost per question", "Score by task", "Score vs cost",
+                    "Degradation watch", "Leaderboard", "Runs", "Questions"]:
         assert heading in html
     data = json.loads(re.search(r'<script id="bench-data" type="application/json">(.*?)</script>', html, re.S).group(1))
     assert data["models"] == ["opus", "qwen"]
@@ -97,3 +98,25 @@ def test_dashboard_escapes_script_breakout(tmp_path):
     out = tmp_path / "dashboard.html"
     write_dashboard(db, out)
     assert "</script><script>alert(1)" not in out.read_text()
+
+
+def test_build_data_model_info_uses_registry_label_and_latest_run(tmp_path):
+    reg = tmp_path / "models.yaml"
+    reg.write_text("models:\n  - id: opus\n    label: Claude Opus\n    access: cli\n"
+                   "    inspect_model: claude-cli/x\n    caps: [text]\n")
+    data = build_data(two_run_db(tmp_path), models_path=reg)
+    opus, qwen = data["model_info"]["opus"], data["model_info"]["qwen"]
+    assert opus["label"] == "Claude Opus" and qwen["label"] == "qwen"  # unknown to registry -> id
+    assert opus["access"] == "cli" and opus["thinking"] == "high" and opus["last_run"] == "r2"
+    assert opus["reported_model"] == "opus" and opus["runs"] == 2
+    assert qwen["last_run"] == "r1" and qwen["runs"] == 1
+
+
+def test_build_data_per_question_cost_and_tokens(tmp_path):
+    data = build_data(two_run_db(tmp_path))
+    rows = {(r["run_id"], r["model"]): r for r in data["results"]}
+    assert rows[("r1", "opus")]["cost_per_q"] is None  # subscription: no per-call price
+    assert rows[("r1", "qwen")]["cost_per_q"] == 0.0
+    q = rows[("r1", "qwen")]
+    assert q["out_tokens_per_q"] == round(q["out_tokens"] / q["samples"], 1)
+    assert data["tasks"]["gpqa"] == {"title": "gpqa", "field": "reasoning", "about": ""}

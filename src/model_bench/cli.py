@@ -174,7 +174,7 @@ def dashboard() -> None:
     """Write reports/dashboard.html: charts, leaderboard, runs and per-question marks (local file)."""
     from model_bench.dashboard import write_dashboard
 
-    out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html")
+    out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html", MODELS_PATH)
     typer.echo(f"wrote {out}")
 
 
