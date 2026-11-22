@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":true,"result":"You've hit your usage limit · resets 9pm (Europe/London)","usage":{"input_tokens":0,"output_tokens":0}}

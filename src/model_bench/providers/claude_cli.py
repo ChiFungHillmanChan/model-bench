@@ -1,0 +1,96 @@
+"""Claude via the owner's subscription: `claude -p` (Claude Code headless).
+
+Switched off: built-in tools (--tools ""), MCP servers (--strict-mcp-config), user/project/local
+settings (--setting-sources ""), session persistence; runs in an empty temp dir; the task's system
+prompt replaces Claude Code's (--system-prompt).
+
+Cannot be switched off: whatever Claude Code itself still sends with every request (observed
+~900 cache-creation tokens for a 4-word system prompt on 2.1.330), and the subscription's model
+routing (no dated snapshot, no temperature control). Results are "via CLI", not bare-model scores.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from inspect_ai.model import GenerateConfig, ModelAPI, ModelOutput, ModelUsage
+
+from model_bench.providers.cli_common import (
+    DEFAULT_TIMEOUT_S,
+    CLIBadOutput,
+    CLIError,
+    classify_failure,
+    run_cli,
+    serialise_messages,
+)
+
+
+def claude_argv(model: str, system_prompt: str | None, effort: str | None) -> list[str]:
+    argv = [
+        "claude", "-p",
+        "--output-format", "json",
+        "--model", model,
+        "--tools", "",
+        "--strict-mcp-config",
+        "--setting-sources", "",
+        "--no-session-persistence",
+        "--system-prompt", system_prompt or "",
+    ]
+    if effort:
+        argv += ["--effort", effort]
+    return argv
+
+
+def parse_claude(stdout: str, stderr: str, code: int) -> tuple[str, ModelUsage, str]:
+    try:
+        data = json.loads(stdout)
+    except (json.JSONDecodeError, ValueError):
+        raise classify_failure(stdout + "\n" + stderr) from None
+    if not isinstance(data, dict) or "result" not in data:
+        raise CLIBadOutput(stdout[:500])
+    if data.get("is_error") or code != 0:
+        raise classify_failure(str(data.get("result")) + "\n" + stderr)
+    u = data.get("usage") or {}
+    cache_write = u.get("cache_creation_input_tokens", 0)
+    cache_read = u.get("cache_read_input_tokens", 0)
+    input_tokens = u.get("input_tokens", 0) + cache_write + cache_read
+    usage = ModelUsage(
+        input_tokens=input_tokens,
+        output_tokens=u.get("output_tokens", 0),
+        total_tokens=input_tokens + u.get("output_tokens", 0),
+        input_tokens_cache_write=cache_write,
+        input_tokens_cache_read=cache_read,
+        total_cost=None,  # subscription: no real spend
+    )
+    model_id = next(iter(data.get("modelUsage") or {}), "")
+    return data["result"], usage, model_id
+
+
+class ClaudeCLIAPI(ModelAPI):
+    def __init__(
+        self,
+        model_name: str,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        config: GenerateConfig = GenerateConfig(),
+        effort: str | None = None,
+        timeout_s: int = DEFAULT_TIMEOUT_S,
+        **model_args: Any,
+    ) -> None:
+        super().__init__(model_name=model_name, base_url=base_url, api_key=api_key, config=config)
+        self.effort = effort
+        self.timeout_s = timeout_s
+
+    def max_connections(self) -> int:
+        return 1
+
+    async def generate(self, input, tools, tool_choice, config) -> ModelOutput:
+        if tools:
+            raise CLIError("tool tasks unsupported on CLI providers")
+        system, prompt = serialise_messages(input)
+        code, out, err = await run_cli(claude_argv(self.model_name, system, self.effort), prompt, self.timeout_s)
+        text, usage, reported = parse_claude(out, err, code)
+        output = ModelOutput.from_content(model=reported or self.model_name, content=text)
+        output.usage = usage
+        return output

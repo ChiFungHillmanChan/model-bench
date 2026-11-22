@@ -1,0 +1,162 @@
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+from inspect_ai import Task, eval
+from inspect_ai.dataset import Sample
+from inspect_ai.model import ChatMessageAssistant, ChatMessageSystem, ChatMessageUser
+from inspect_ai.scorer import match
+from inspect_ai.solver import generate
+
+from model_bench.providers import claude_cli
+from model_bench.providers.cli_common import (
+    CLIAuthError,
+    CLIBadOutput,
+    CLITimeout,
+    CLIUsageLimit,
+    run_cli,
+    serialise_messages,
+)
+from model_bench.providers.claude_cli import claude_argv, parse_claude
+from model_bench.providers.codex_cli import codex_argv, parse_codex
+
+FIX = Path(__file__).parent / "fixtures"
+
+
+def test_serialise_single_user_message_passthrough():
+    assert serialise_messages([ChatMessageUser(content="What is 2+2?")]) == (None, "What is 2+2?")
+
+
+def test_serialise_system_and_multiturn():
+    system, prompt = serialise_messages(
+        [
+            ChatMessageSystem(content="Be brief."),
+            ChatMessageUser(content="Hi"),
+            ChatMessageAssistant(content="Hello"),
+            ChatMessageUser(content="Bye"),
+        ]
+    )
+    assert system == "Be brief."
+    lines = [l for l in prompt.splitlines() if l.startswith("[")]
+    assert lines == ["[user]", "[assistant]", "[user]"]
+    assert prompt.index("Hi") < prompt.index("Hello") < prompt.index("Bye")
+
+
+def test_claude_argv_isolation():
+    argv = claude_argv("sonnet", "sys", None)
+    assert argv[:2] == ["claude", "-p"]
+    i = argv.index("--tools")
+    assert argv[i + 1] == ""
+    i = argv.index("--setting-sources")
+    assert argv[i + 1] == ""
+    for flag in ["--strict-mcp-config", "--no-session-persistence"]:
+        assert flag in argv
+    assert "--continue" not in argv and "--resume" not in argv
+    assert argv[argv.index("--system-prompt") + 1] == "sys"
+    assert "--effort" not in argv
+    assert claude_argv("opus", None, "high")[-2:] == ["--effort", "high"]
+
+
+def test_codex_argv_isolation(tmp_path):
+    argv = codex_argv("gpt-x", tmp_path / "last.txt", None)
+    for flag in ["--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules"]:
+        assert flag in argv
+    assert argv[argv.index("-s") + 1] == "read-only"
+    assert "project_doc_max_bytes=0" in argv
+    assert argv[-1] == "-"
+    assert "model_reasoning_effort=high" in codex_argv("gpt-x", tmp_path / "l", "high")
+
+
+async def test_run_cli_uses_empty_temp_cwd():
+    code, out, _ = await run_cli(
+        [sys.executable, "-c", "import os;print(os.getcwd());print(len(os.listdir()))"], None, 30
+    )
+    cwd, count = out.split()
+    assert code == 0
+    assert os.path.realpath(cwd).startswith(os.path.realpath(tempfile.gettempdir()))
+    assert count == "0"
+
+
+async def test_run_cli_strips_api_keys(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "y")
+    _, out, _ = await run_cli(
+        [sys.executable, "-c", "import os;print(os.environ.get('ANTHROPIC_API_KEY'), os.environ.get('OPENAI_API_KEY'))"],
+        None,
+        30,
+    )
+    assert out.strip() == "None None"
+
+
+async def test_run_cli_passes_stdin():
+    _, out, _ = await run_cli([sys.executable, "-c", "import sys;print(sys.stdin.read().upper())"], "abc", 30)
+    assert out.strip() == "ABC"
+
+
+async def test_timeout_raises_cli_timeout():
+    with pytest.raises(CLITimeout):
+        await run_cli([sys.executable, "-c", "import time;time.sleep(5)"], None, 1)
+
+
+def test_parse_claude_ok():
+    text, usage, model_id = parse_claude((FIX / "claude_ok.json").read_text(), "", 0)
+    assert text == "OK"
+    assert usage.output_tokens > 0
+    assert usage.total_cost is None  # subscription: no real spend
+    assert model_id == "claude-haiku-5-5"
+
+
+def test_parse_claude_usage_limit_raises():
+    with pytest.raises(CLIUsageLimit):
+        parse_claude((FIX / "claude_limit.txt").read_text(), "", 1)
+
+
+def test_parse_claude_auth_error_raises():
+    with pytest.raises(CLIAuthError):
+        parse_claude("", "Invalid API key · Please run /login", 1)
+
+
+def test_parse_claude_garbage_raises_bad_output():
+    with pytest.raises(CLIBadOutput):
+        parse_claude("not json", "", 0)
+
+
+def test_parse_codex_ok():
+    text, usage = parse_codex((FIX / "codex_ok.jsonl").read_text(), "", 0, "OK")
+    assert text == "OK"
+    assert usage.input_tokens > 0 and usage.output_tokens > 0
+    assert usage.total_cost is None
+
+
+def test_parse_codex_usage_limit_raises():
+    with pytest.raises(CLIUsageLimit):
+        parse_codex((FIX / "codex_limit.txt").read_text(), "", 1, "")
+
+
+def test_parse_codex_empty_answer_is_bad_output():
+    with pytest.raises(CLIBadOutput):
+        parse_codex('{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":0}}', "", 0, "")
+
+
+def test_generate_error_is_sample_error_not_empty_answer(monkeypatch, tmp_path):
+    async def fake_run_cli(argv, stdin, timeout_s):
+        return 1, (FIX / "claude_limit.txt").read_text(), ""
+
+    monkeypatch.setattr(claude_cli, "run_cli", fake_run_cli)
+    task = Task(dataset=[Sample(input="Say OK", target="OK")], solver=generate(), scorer=match())
+    [log] = eval(task, model="claude-cli/haiku", log_dir=str(tmp_path), display="none", fail_on_error=False)
+    sample = log.samples[0]
+    assert sample.error is not None
+    assert "CLIUsageLimit" in sample.error.message
+    assert not sample.scores
+
+
+@pytest.mark.live
+def test_live_claude_and_codex_one_sample(tmp_path):
+    task = Task(dataset=[Sample(input="Reply with exactly: OK", target="OK")], solver=generate(), scorer=match())
+    for model in ["claude-cli/haiku", "codex-cli/gpt-6.2-astra"]:
+        [log] = eval(task, model=model, log_dir=str(tmp_path), display="none")
+        assert log.status == "success", model
+        assert log.samples[0].scores["match"].value == "C", model
