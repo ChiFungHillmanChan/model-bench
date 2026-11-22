@@ -10,6 +10,7 @@ from model_bench.registry import ModelEntry, TaskEntry, load_models, load_tasks
 
 MODELS_PATH = Path("models.yaml")
 TASKS_PATH = Path("tasks/registry.yaml")
+LOG_ROOT = Path("logs")
 
 app = typer.Typer(no_args_is_help=True, help="Private model benchmark harness.")
 
@@ -92,9 +93,34 @@ def plan(
 
 
 @app.command()
-def run() -> None:
-    """Run a plan."""
-    _todo()
+def run(
+    models: str = typer.Option(..., help="Comma-separated model ids, or 'all'"),
+    tier: str = typer.Option("smoke"),
+    tasks: str | None = typer.Option(None, help="Comma-separated task names"),
+    budget: float = typer.Option(..., help="Hard cap on real API spend in USD"),
+    run_id: str | None = typer.Option(None, help="Resume an existing run"),
+    yes: bool = typer.Option(False, "--yes", help="Skip the confirmation prompt"),
+) -> None:
+    """Run a plan (resumable with --run-id)."""
+    from model_bench.runner import BudgetExceeded
+    from model_bench.runner import run as run_plan
+
+    p = make_plan(models, tier, tasks)
+    print_plan(p)
+    registry = load_models(MODELS_PATH)
+    needs_ok = any(registry[i.model_id].access in ("api", "cli") for i in p.items)
+    if needs_ok and not yes:
+        typer.confirm("This spends API money or subscription quota. Continue?", abort=True)
+    try:
+        m = run_plan(p, budget, registry, load_tasks(TASKS_PATH), run_id=run_id, log_root=LOG_ROOT)
+    except BudgetExceeded as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+    typer.echo(f"run_id: {m.run_id}  status: {m.status}  spend: ${m.spend_usd:.4f}")
+    if m.error:
+        typer.echo(f"error: {m.error}  (resume with --run-id {m.run_id})")
+    if m.quota_stopped:
+        typer.echo(f"quota stopped: {', '.join(m.quota_stopped)}  (resume later with --run-id {m.run_id})")
 
 
 @app.command()
