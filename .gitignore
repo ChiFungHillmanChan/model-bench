@@ -1,1 +1,11 @@
 .superpowers/
+.env
+.venv/
+logs/
+results.duckdb
+results.duckdb.wal
+reports/
+blind/keys/
+__pycache__/
+*.pyc
+.pytest_cache/
