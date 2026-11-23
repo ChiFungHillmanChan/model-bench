@@ -42,6 +42,7 @@ models:
     access: cli
     inspect_model: claude-cli/claude-sonnet-5-5
     caps: [text, reasoning, json, "ctx:200000"]
+    params: {effort: high}  # same thinking level as Opus 5.5 for a like-for-like comparison
     sealed_ok: true
 
   - id: codex-cli-default
@@ -49,4 +50,28 @@ models:
     access: cli
     inspect_model: codex-cli/gpt-6.2-astra
     caps: [text, reasoning, json, "ctx:200000"]
+    sealed_ok: true
+
+  - id: claude-cli-haiku-5-5
+    label: Claude Haiku 5.5
+    inspect_model: claude-cli/claude-haiku-5-5
+    access: cli
+    caps: ['ctx:200000', json, reasoning, text]
+    params: {effort: high}
+    sealed_ok: true
+
+  - id: codex-cli-gpt-6-2-astra
+    label: GPT-6.2 Astra (Codex)
+    inspect_model: codex-cli/gpt-6.2-astra
+    access: cli
+    caps: ['ctx:200000', json, reasoning, text]
+    params: {effort: high}
+    sealed_ok: true
+
+  - id: codex-cli-gpt-6-2-sol
+    label: GPT-6.2 Sol (Codex)
+    inspect_model: codex-cli/gpt-6.2-sol
+    access: cli
+    caps: ['ctx:200000', json, reasoning, text]
+    params: {effort: high}
     sealed_ok: true

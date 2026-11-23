@@ -100,7 +100,7 @@ Model 名要用準確嘅 id（例如 `claude-opus-5-6`），唔好用 `opus` 呢
 | **GPT** | `codex exec`（Codex CLI，用 ChatGPT 訂閱） | 用 quota | 已經可以用：`codex-cli-default`（gpt-6.2-astra） |
 | **DeepSeek** | API key | 按 token 收錢 | 已設定：`deepseek-flash`、`deepseek-v4-pro` |
 | **Ollama** | 本機 | 免費 | 已設定：`ollama-qwen3-8b` |
-| **Gemini** | Antigravity 冇 headless CLI，自動測唔到。可以揀：(a) 裝 Gemini CLI 再寫一個 provider（似 claude-cli）；(b) 用 Gemini API（要裝 `google-genai`） | (a) 用 quota；(b) 收錢 | 未整 |
+| **Gemini** | 用 plan 做唔到：Gemini CLI 已經被 Google 封咗個人帳戶（2026-11-22 試過："This client is no longer supported for Gemini Code Assist for individuals"），而 Antigravity 冇 headless 模式（`agy-desktop-helper` 只有 `probe` 同 `serve`，係用嚟 pairing）。唯一方法係 Gemini API（要 `google-genai` 同 key）。API 價錢（2026-11-22，每 1M token，輸入 / 輸出）：Gemini 4 Neon $3 / $15；Hydrogen $1.5 / $7.5；Carbon $2 / $10（12 月 1 號起 $4 / $20） | 收錢 | 未整；用 key 之前要你講明 OK |
 | **Grok** | xAI API（要裝 `xai-sdk` 同 `XAI_API_KEY`） | 收錢 | 未整 |
 
 ### 重要：API key 嘅規則
