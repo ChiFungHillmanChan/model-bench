@@ -1,0 +1,4 @@
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"web_search","query":"GPQA diamond answers"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"B"}}
+{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":5}}

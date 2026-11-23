@@ -238,3 +238,27 @@ async def test_run_cli_feeds_stdin_from_a_ready_file(monkeypatch):
     code, out, _ = await cc.run_cli(["cat"], "hello prompt", 10)
     assert seen["is_file"] and seen["content"] in ("hello prompt", b"hello prompt")
     assert code == 0 and out == "hello prompt"
+
+
+def test_codex_argv_switches_off_tools_web_search_and_skills(tmp_path, monkeypatch):
+    # Live run 2026-11-22: GPT used web_search (found a GPQA results page), ran curl, and read
+    # ~/.agents/skills. Every tool surface is switched off; every skill on disk is disabled.
+    home = tmp_path / "home"
+    for d in ["~/.agents/skills/my-skill", "~/.codex/skills/other", "~/.codex/skills/.system/imagegen"]:
+        p = home / d[2:]
+        p.mkdir(parents=True)
+        (p / "SKILL.md").write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+    argv = codex_argv("gpt-x", tmp_path / "l", None)
+    disabled = {argv[i + 1] for i, a in enumerate(argv) if a == "--disable"}
+    assert {"shell_tool", "unified_exec", "plugins", "apps", "browser_use", "computer_use", "in_app_browser"} <= disabled
+    assert 'web_search="disabled"' in argv
+    cfg = next(a for a in argv if a.startswith("skills.config="))
+    for d in ["my-skill", "other", ".system/imagegen"]:
+        assert f'/{d}/SKILL.md", enabled=false}}' in cfg
+    assert argv[-1] == "-"
+
+
+def test_parse_codex_web_search_is_error():
+    with pytest.raises(CLIBadOutput, match="web_search"):
+        parse_codex((FIX / "codex_websearch.jsonl").read_text(), "", 0, "B")

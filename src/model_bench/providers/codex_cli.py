@@ -13,6 +13,7 @@ to the prompt as a [system] block rather than replacing Codex's. Results are "vi
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,29 @@ from model_bench.providers.cli_common import (
 )
 
 
+# Every tool surface Codex can reach. Live run 2026-11-22: GPT ran web_search (found a GPQA
+# results page), tried curl, and read ~/.agents/skills; --ignore-user-config does not stop these.
+DISABLED_FEATURES = (
+    "shell_tool", "unified_exec", "plugins", "apps", "remote_plugin", "plugin_discovery_prefetch",
+    "skill_search", "skill_mcp_dependency_install", "browser_use", "browser_use_external",
+    "computer_use", "in_app_browser",
+)
+SKILL_ROOTS = ("~/.agents/skills", "~/.codex/skills", "~/.codex/skills/.system")
+# Item types a plain answer produces; anything else is the model using a tool.
+ANSWER_ITEMS = {"agent_message", "reasoning", "error", "todo_list"}
+
+
+def _skills_off() -> str:
+    """skills.config entry disabling every skill on disk (there is no global skills switch)."""
+    paths = sorted(
+        str(d / "SKILL.md")
+        for root in SKILL_ROOTS
+        for d in Path(os.path.expanduser(root)).glob("*")
+        if (d / "SKILL.md").is_file()
+    )
+    return "skills.config=[" + ",".join(f'{{path="{p}", enabled=false}}' for p in paths) + "]"
+
+
 def codex_argv(model: str, out_file: Path, effort: str | None) -> list[str]:
     argv = [
         "codex", "exec",
@@ -42,7 +66,12 @@ def codex_argv(model: str, out_file: Path, effort: str | None) -> list[str]:
         "-s", "read-only",
         "-m", model,
         "-o", str(out_file),
+        "-c", 'web_search="disabled"',
+        "-c", "include_apps_instructions=false",
+        "-c", _skills_off(),
     ]
+    for feature in DISABLED_FEATURES:
+        argv += ["--disable", feature]
     if effort:
         argv += ["-c", f"model_reasoning_effort={effort}"]
     return argv + ["-"]
@@ -71,6 +100,13 @@ def parse_codex(stdout: str, stderr: str, code: int, last_message: str) -> tuple
     ]
     if commands:
         raise CLIBadOutput(f"model ran a shell command, not allowed for benchmark tasks: {commands[0][:200]}")
+    tools = [
+        e["item"].get("type")
+        for e in events
+        if e.get("type") == "item.completed" and (e.get("item") or {}).get("type") not in ANSWER_ITEMS
+    ]
+    if tools:
+        raise CLIBadOutput(f"model used a tool ({tools[0]}), not allowed for benchmark tasks")
     messages = [
         e["item"].get("text", "")
         for e in events
