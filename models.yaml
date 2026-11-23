@@ -82,3 +82,86 @@ models:
     access: local
     sealed_ok: true
     caps: [text, json, vision, 'ctx:32000']
+
+  # Thinking-level sweep (2026-11-23): same model, other effort levels. The plain ids above are effort high.
+
+  - id: claude-cli-opus-5-5-low
+    label: "Claude Opus 5.5 [low]"
+    access: cli
+    inspect_model: claude-cli/claude-opus-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: low}
+    sealed_ok: true
+
+  - id: claude-cli-opus-5-5-medium
+    label: "Claude Opus 5.5 [medium]"
+    access: cli
+    inspect_model: claude-cli/claude-opus-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: medium}
+    sealed_ok: true
+
+  - id: claude-cli-opus-5-5-xhigh
+    label: "Claude Opus 5.5 [xhigh]"
+    access: cli
+    inspect_model: claude-cli/claude-opus-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: xhigh}
+    sealed_ok: true
+
+  - id: claude-cli-sonnet-5-5-low
+    label: "Claude Sonnet 5.5 [low]"
+    access: cli
+    inspect_model: claude-cli/claude-sonnet-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: low}
+    sealed_ok: true
+
+  - id: claude-cli-sonnet-5-5-medium
+    label: "Claude Sonnet 5.5 [medium]"
+    access: cli
+    inspect_model: claude-cli/claude-sonnet-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: medium}
+    sealed_ok: true
+
+  - id: claude-cli-sonnet-5-5-xhigh
+    label: "Claude Sonnet 5.5 [xhigh]"
+    access: cli
+    inspect_model: claude-cli/claude-sonnet-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: xhigh}
+    sealed_ok: true
+
+  - id: codex-cli-gpt-6-2-sol-low
+    label: "GPT-6.2 Sol (Codex) [low]"
+    access: cli
+    inspect_model: codex-cli/gpt-6.2-sol
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: low}
+    sealed_ok: true
+
+  - id: codex-cli-gpt-6-2-sol-medium
+    label: "GPT-6.2 Sol (Codex) [medium]"
+    access: cli
+    inspect_model: codex-cli/gpt-6.2-sol
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: medium}
+    sealed_ok: true
+
+  - id: codex-cli-gpt-6-2-sol-xhigh
+    label: "GPT-6.2 Sol (Codex) [xhigh]"
+    access: cli
+    inspect_model: codex-cli/gpt-6.2-sol
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: xhigh}
+    sealed_ok: true
+
+  # Judge for benchmarks graded by a model (HLE). Haiku is not in the thinking-level sweep.
+  - id: claude-cli-haiku-5-5-judge
+    label: "Claude Haiku 5.5 [judge, low]"
+    access: cli
+    inspect_model: claude-cli/claude-haiku-5-5
+    caps: [text, reasoning, json, vision, "ctx:200000"]
+    params: {effort: low}
+    sealed_ok: true

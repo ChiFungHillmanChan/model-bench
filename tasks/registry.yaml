@@ -54,4 +54,89 @@ tasks:
     scorer_kind: deterministic
     est_tokens_per_sample: [500, 8000]
 
+
+  # --- Harder, unsaturated benchmarks (2026-11-23): no Docker; 50 shuffled items x 1 pass at standard ---
+  - name: bbeh
+    source: inspect_evals/bbeh
+    category: hard_reasoning
+    title: "BIG-Bench Extra Hard"
+    about: "23 hard reasoning tasks that replace BIG-Bench Hard; frontier models are far from the ceiling."
+    needs: [text]
+    tiers:
+      smoke: {limit: 3, epochs: 1}
+      standard: {limit: 50, epochs: 1}
+      full: {limit: null, epochs: 1}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [3000, 4000]
+
+  - name: lingoly_too
+    source: inspect_evals/lingoly_too
+    category: hard_reasoning
+    title: "LingOly-TOO"
+    about: "Linguistics olympiad puzzles with obfuscated languages, so memorised answers do not help."
+    needs: [text]
+    tiers:
+      smoke: {limit: 3, epochs: 1}
+      standard: {limit: 50, epochs: 1}
+      full: {limit: null, epochs: 1}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [3000, 3000]
+
+  - name: zerobench
+    source: inspect_evals/zerobench
+    task_args: {k: 1, top_n: [1]}  # one sample per question; upstream default draws 5
+    category: vision
+    title: "ZeroBench"
+    about: "100 visual reasoning questions built so that frontier models score near zero."
+    needs: [vision]
+    tiers:
+      smoke: {limit: 3, epochs: 1}
+      standard: {limit: 50, epochs: 1}
+      full: {limit: null, epochs: 1}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [2000, 4000]
+
+  - name: aime2026
+    source: inspect_evals/aime2026
+    category: math
+    title: "AIME 2026"
+    about: "30 problems from the 2026 American Invitational Mathematics Examination; newer than most training data."
+    needs: [text]
+    tiers:
+      smoke: {limit: 3, epochs: 1}
+      standard: {limit: 50, epochs: 1}
+      full: {limit: null, epochs: 1}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [500, 8000]
+
+  - name: hle
+    source: inspect_evals/hle
+    category: frontier
+    title: "Humanity's Last Exam"
+    about: "Expert questions across 100+ subjects (verified-gold subset, some with images); judged by Claude Haiku 5.5."
+    needs: [text, vision]
+    model_roles: {grader: claude-cli-haiku-5-5-judge}  # one plan-CLI judge instead of the default API judges
+    task_args:
+      scorer:
+        scorer: inspect_evals/hle/regex_judge
+        metrics: [inspect_evals/hle/accuracy, inspect_evals/hle/stderr, inspect_evals/hle/cerr, inspect_evals/hle/unscored]
+        graders: [grader]
+        args: {template: regex_judge_template, instructions: regex_judge_instructions, max_grader_attempts: 3}
+    tiers:
+      smoke: {limit: 3, epochs: 1}
+      standard: {limit: 50, epochs: 1}
+      full: {limit: null, epochs: 1}
+    split: test
+    version: "1"
+    scorer_kind: judge
+    est_tokens_per_sample: [800, 6000]
+
   # Private tasks go in tasks/private/registry.yaml (untracked); load_tasks merges it when present.

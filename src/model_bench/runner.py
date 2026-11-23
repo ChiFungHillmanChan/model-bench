@@ -11,7 +11,7 @@ from typing import Literal
 
 from inspect_ai import Task, eval_set, task_with
 from inspect_ai.log import EvalLog, read_eval_log
-from inspect_ai.model import ModelUsage
+from inspect_ai.model import GenerateConfig, Model, ModelUsage, get_model
 from pydantic import BaseModel
 
 from model_bench.planner import Plan, PlanItem, load_inspect_task
@@ -62,8 +62,18 @@ def build_task(entry: TaskEntry, item: PlanItem) -> Task:
 CLI_MAX_CONNECTIONS = 2
 
 
-def execute_chunk(task: Task, model: ModelEntry, log_dir: Path, display: str | None) -> list[EvalLog]:
+def role_model(m: ModelEntry) -> Model:
+    """An Inspect model for a judge role, configured exactly as the registry entry is for a run."""
+    if m.access == "cli":
+        return get_model(m.inspect_model, **dict(m.params))
+    return get_model(m.inspect_model, config=GenerateConfig(**m.params))
+
+
+def execute_chunk(task: Task, model: ModelEntry, log_dir: Path, display: str | None,
+                  roles: dict[str, ModelEntry] | None = None) -> list[EvalLog]:
     kwargs: dict = {}
+    if roles:
+        kwargs["model_roles"] = {role: role_model(m) for role, m in roles.items()}
     if model.access == "cli":
         kwargs["model_args"] = dict(model.params)
         kwargs["fail_on_error"] = False
@@ -146,6 +156,10 @@ def run(
     log_root: Path = Path("logs"),
     display: str | None = None,
 ) -> Manifest:
+    for name in dict.fromkeys(i.task_name for i in plan.items):
+        missing = [mid for mid in tasks[name].model_roles.values() if mid not in models]
+        if missing:
+            raise ValueError(f"task {name}: judge model(s) not in the registry: {', '.join(missing)}")
     existing = log_root / run_id / "manifest.json" if run_id else None
     done = (
         set(Manifest.model_validate_json(existing.read_text()).completed_chunks)
@@ -194,7 +208,9 @@ def run(
                 manifest.status = "stopped_budget"
                 break
             model = models[item.model_id]
-            logs = execute_chunk(build_task(tasks[item.task_name], item), model, run_dir / chunk, display)
+            entry = tasks[item.task_name]
+            roles = {role: models[mid] for role, mid in entry.model_roles.items()}
+            logs = execute_chunk(build_task(entry, item), model, run_dir / chunk, display, roles)
             manifest.spend_usd += chunk_spend(logs, model)
             bad = [log for log in logs if log.status != "success"]
             if _quota_hit(logs):

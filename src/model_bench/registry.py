@@ -85,6 +85,7 @@ class TaskEntry(_Strict):
     sealed: bool = False
     est_tokens_per_sample: tuple[int, int]
     task_args: dict[str, Any] = {}
+    model_roles: dict[str, str] = {}  # judge role -> registered model id (e.g. HLE's "grader")
     title: str | None = None  # dashboard name; tasks without one show their name
     about: str | None = None  # one-line dashboard description
 

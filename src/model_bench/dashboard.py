@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from model_bench.report import CLI_BINARIES, THINKING_KEYS, _headlines, _obs
 from model_bench.stats import clustered_mean, epoch_agreement, pass_hat_k
 
 TEMPLATE = Path(__file__).with_name("dashboard_template.html")
+_BASE = re.compile(r"\s*\[[^\]]*\]$")
 
 # Display titles and one-line descriptions for known tasks (unknown tasks fall back to their name).
 TASK_INFO = {
@@ -63,26 +65,32 @@ def _parse_time(value: str | None) -> datetime | None:
 
 
 def build_data(db: Path, models_path: Path | None = None, tasks_path: Path | None = None) -> dict:
-    labels = {}
+    labels, efforts = {}, {}
     if models_path and Path(models_path).exists():
         try:
-            labels = {k: m.label for k, m in load_models(models_path).items() if m.label}
+            reg = load_models(models_path)
+            labels = {k: m.label for k, m in reg.items() if m.label}
+            efforts = {k: str(m.params["effort"]) for k, m in reg.items() if "effort" in m.params}
         except RegistryError:
-            labels = {}
-    info = dict(TASK_INFO)
+            labels, efforts = {}, {}
+    info, categories = dict(TASK_INFO), {}
     if tasks_path and Path(tasks_path).exists():
         try:
-            info |= {k: (t.title or k, t.about or "") for k, t in load_tasks(tasks_path).items() if t.title or t.about}
+            reg_tasks = load_tasks(tasks_path)
+            info |= {k: (t.title or k, t.about or "") for k, t in reg_tasks.items() if t.title or t.about}
+            categories = {k: t.category for k, t in reg_tasks.items()}
         except RegistryError:
             pass
     con = duckdb.connect(str(db), read_only=True)
     try:
-        return _build(con, labels, info)
+        return _build(con, labels, info, efforts, categories)
     finally:
         con.close()
 
 
-def _build(con, labels: dict[str, str], info: dict[str, tuple[str, str]]) -> dict:
+def _build(con, labels: dict[str, str], info: dict[str, tuple[str, str]], efforts: dict[str, str] | None = None,
+           categories: dict[str, str] | None = None) -> dict:
+    efforts, categories = efforts or {}, categories or {}
     runs_out, results = [], []
     model_info: dict[str, dict] = {}
     tasks_info: dict[str, dict] = {}
@@ -94,7 +102,7 @@ def _build(con, labels: dict[str, str], info: dict[str, tuple[str, str]]) -> dic
             manifest = json.loads(raw or "{}")
         except json.JSONDecodeError:
             manifest = {}
-        fields = {t["name"]: t.get("category", "") for t in manifest.get("tasks") or []}
+        fields = {t["name"]: categories.get(t["name"]) or t.get("category", "") for t in manifest.get("tasks") or []}
         for name, field in fields.items():
             title, about = info.get(name, (name, ""))
             tasks_info.setdefault(name, {"title": title, "field": field, "about": about})
@@ -172,6 +180,9 @@ def _build(con, labels: dict[str, str], info: dict[str, tuple[str, str]]) -> dic
             info["runs"] += 1
             if info.get("last_run") == run["run_id"]:
                 info["last_date"] = run["date"]
+    for m, info in model_info.items():  # effort variants of one model share a base (label without "[effort]")
+        info["base"] = _BASE.sub("", info.get("label") or m)
+        info["effort"] = efforts.get(m) or info.get("thinking")
     return {
         "generated": datetime.now().astimezone().isoformat(timespec="seconds"),
         "models": models, "model_info": model_info, "tasks": tasks_info, "rate_labels": RATE_LABELS,

@@ -44,11 +44,11 @@ def test_ingest_after_resume_no_duplicates(tmp_path, monkeypatch):
     real = runner.execute_chunk
     state = {"n": 0}
 
-    def flaky(task, model, log_dir, display):
+    def flaky(task, model, log_dir, display, roles=None):
         state["n"] += 1
         if state["n"] == 2:
             raise RuntimeError("boom")
-        return real(task, model, log_dir, display)
+        return real(task, model, log_dir, display, roles)
 
     monkeypatch.setattr(runner, "execute_chunk", flaky)
     first = do_run(tmp_path, [mock_model()], [tiny_task("t1"), tiny_task("t2")])

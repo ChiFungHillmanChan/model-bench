@@ -77,11 +77,11 @@ def test_resume_reuses_run_id(tmp_path, monkeypatch):
     real = runner.execute_chunk
     calls = {"n": 0}
 
-    def flaky(task, model, log_dir, display):
+    def flaky(task, model, log_dir, display, roles=None):
         calls["n"] += 1
         if "t2" in str(log_dir) and calls["n"] == 2:
             raise RuntimeError("boom")
-        return real(task, model, log_dir, display)
+        return real(task, model, log_dir, display, roles)
 
     monkeypatch.setattr(runner, "execute_chunk", flaky)
     first = go(plan, models, tasks, tmp_path)
@@ -181,11 +181,11 @@ def test_resume_checks_remaining_estimate_only(tmp_path, monkeypatch):
     real = runner.execute_chunk
     state = {"n": 0}
 
-    def flaky(task, model, log_dir, display):
+    def flaky(task, model, log_dir, display, roles=None):
         state["n"] += 1
         if state["n"] == 2:
             raise RuntimeError("boom")
-        return real(task, model, log_dir, display)
+        return real(task, model, log_dir, display, roles)
 
     monkeypatch.setattr(runner, "execute_chunk", flaky)
     for i, item in enumerate(plan.items):
@@ -218,3 +218,30 @@ def test_cli_chunk_sets_explicit_low_concurrency(tmp_path, monkeypatch):
     seen.clear()
     runner.execute_chunk(tiny_task(), mock_model(), tmp_path, "none")
     assert "max_connections" not in seen  # API/local keep Inspect's own handling
+
+
+def test_task_judge_roles_resolve_to_registered_models(tmp_path, monkeypatch):
+    # HLE grades with a judge model role; the judge must be a registered model (here a plan CLI),
+    # never the benchmark's default API judges.
+    seen = {}
+    real = runner.eval_set
+
+    def spy(*a, **kw):
+        seen["roles"] = kw.get("model_roles")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(runner, "eval_set", spy)
+    judge = mock_model("judge")
+    task = tiny_task().model_copy(update={"model_roles": {"grader": "judge"}})
+    plan, models, tasks = make([mock_model()], [task])
+    models["judge"] = judge
+    go(plan, models, tasks, tmp_path)
+    assert set(seen["roles"]) == {"grader"}
+    assert str(seen["roles"]["grader"]) == "mockllm/model"
+
+
+def test_unknown_judge_model_is_refused(tmp_path):
+    task = tiny_task().model_copy(update={"model_roles": {"grader": "nope"}})
+    plan, models, tasks = make([mock_model()], [task])
+    with pytest.raises(ValueError, match="nope"):
+        go(plan, models, tasks, tmp_path)

@@ -86,6 +86,7 @@ def test_write_dashboard_is_self_contained(tmp_path):
     assert html.startswith("<!doctype html>")
     assert not re.search(r"<script[^>]+src=", html)  # no external scripts: file works offline
     for heading in ["Bench score", "Time per question", "Cost per question", "Score by task", "Score vs cost",
+                    "Best score per benchmark", "Thinking levels",
                     "Degradation watch", "Leaderboard", "Runs"]:
         assert heading in html
     data = json.loads(re.search(r'<script id="bench-data" type="application/json">(.*?)</script>', html, re.S).group(1))
@@ -168,3 +169,35 @@ def test_rate_labels_cover_the_pooled_metrics():
 
     for m in ["values", "missed", "false_alarm", "facts", "overflow", "invented", "balanced_accuracy", "scorer_error"]:
         assert m in RATE_LABELS
+
+
+def test_model_info_groups_effort_variants_under_one_base(tmp_path):
+    # The thinking-level chart joins one model's effort settings into one line.
+    reg = tmp_path / "models.yaml"
+    reg.write_text("models:\n"
+                   "  - {id: opus, label: Claude Opus, access: cli, inspect_model: claude-cli/x, caps: [text], params: {effort: high}}\n"
+                   "  - {id: qwen, label: 'Claude Opus [low]', access: cli, inspect_model: claude-cli/x, caps: [text], params: {effort: low}}\n")
+    data = build_data(two_run_db(tmp_path), models_path=reg)
+    opus, low = data["model_info"]["opus"], data["model_info"]["qwen"]
+    assert opus["base"] == low["base"] == "Claude Opus"
+    assert opus["effort"] == "high" and low["effort"] == "low"
+
+
+def test_registry_category_overrides_the_one_saved_in_old_manifests(tmp_path):
+    # Re-categorising a task must relabel past runs too, not only runs made after the change.
+    reg = tmp_path / "registry.yaml"
+    reg.write_text("""
+tasks:
+  - name: gpqa
+    source: local:tasks/x.py@x
+    category: hard_reasoning
+    needs: [text]
+    tiers: {smoke: {limit: 1, epochs: 1}}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [1, 1]
+""")
+    data = build_data(two_run_db(tmp_path), tasks_path=reg)
+    assert data["tasks"]["gpqa"]["field"] == "hard_reasoning"
+    assert {r["field"] for r in data["results"] if r["task"] == "gpqa"} == {"hard_reasoning"}
