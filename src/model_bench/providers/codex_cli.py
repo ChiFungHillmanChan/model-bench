@@ -37,6 +37,9 @@ DISABLED_FEATURES = (
     "shell_tool", "unified_exec", "plugins", "apps", "remote_plugin", "plugin_discovery_prefetch",
     "skill_search", "skill_mcp_dependency_install", "browser_use", "browser_use_external",
     "computer_use", "in_app_browser",
+    # Standard run 2026-11-23: mcp_tool_call on 13 IFEval items via built-in tools still on.
+    "code_mode_host", "multi_agent", "goals", "sleep_tool", "image_generation", "view_image",
+    "tool_suggest", "hooks",
 )
 SKILL_ROOTS = ("~/.agents/skills", "~/.codex/skills", "~/.codex/skills/.system")
 # Item types a plain answer produces; anything else is the model using a tool.

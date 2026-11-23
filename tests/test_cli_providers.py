@@ -252,6 +252,10 @@ def test_codex_argv_switches_off_tools_web_search_and_skills(tmp_path, monkeypat
     argv = codex_argv("gpt-x", tmp_path / "l", None)
     disabled = {argv[i + 1] for i, a in enumerate(argv) if a == "--disable"}
     assert {"shell_tool", "unified_exec", "plugins", "apps", "browser_use", "computer_use", "in_app_browser"} <= disabled
+    # Standard run 2026-11-23: 13 IFEval answers still made mcp_tool_call; built-in tool features
+    # (code-mode exec with tools.*, multi-agent, goals, clock, image gen/view, tool suggest, hooks).
+    assert {"code_mode_host", "multi_agent", "goals", "sleep_tool", "image_generation", "view_image",
+            "tool_suggest", "hooks"} <= disabled
     assert 'web_search="disabled"' in argv
     cfg = next(a for a in argv if a.startswith("skills.config="))
     for d in ["my-skill", "other", ".system/imagegen"]:
