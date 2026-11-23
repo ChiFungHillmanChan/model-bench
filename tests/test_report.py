@@ -153,3 +153,9 @@ def test_report_run_settings_section(tmp_path):
 
 def test_report_without_manifest_still_renders(db):
     assert "settings not recorded" in report(db)
+
+
+def test_headline_prefers_a_score_submetric_over_confidence():
+    # HLE's judge returns {score, confidence}; confidence is 0-100 and is not accuracy.
+    from model_bench.report import _headline
+    assert _headline(["hle/regex_judge.confidence", "hle/regex_judge.score"]) == "hle/regex_judge.score"

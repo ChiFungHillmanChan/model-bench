@@ -43,7 +43,10 @@ def _headline(scorers: list[str]) -> str:
     if plain:
         return plain[0]
     strict = sorted(s for s in scorers if s.endswith("prompt_level_strict"))
-    return strict[0] if strict else sorted(scorers)[0]
+    if strict:
+        return strict[0]
+    score = sorted(s for s in scorers if s.endswith(".score"))  # e.g. HLE {score, confidence}
+    return score[0] if score else sorted(scorers)[0]
 
 
 def _headlines(con, run_id: str) -> dict[str, str]:
