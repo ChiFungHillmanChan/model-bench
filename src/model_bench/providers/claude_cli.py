@@ -11,7 +11,10 @@ routing (no dated snapshot, no temperature control). Results are "via CLI", not 
 
 from __future__ import annotations
 
+import base64
 import json
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from inspect_ai.model import GenerateConfig, ModelAPI, ModelOutput, ModelUsage
@@ -22,15 +25,22 @@ from model_bench.providers.cli_common import (
     CLIError,
     check_isolation,
     classify_failure,
+    extract_images,
     run_cli,
     serialise_messages,
 )
 
 
-def claude_argv(model: str, system_prompt: str | None, effort: str | None) -> list[str]:
+def claude_argv(model: str, system_prompt: str | None, effort: str | None, with_images: bool = False) -> list[str]:
+    # Images only travel in stream-json input, which in turn needs stream-json output.
+    io_flags = (
+        ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+        if with_images
+        else ["--output-format", "json"]
+    )
     argv = [
         "claude", "-p",
-        "--output-format", "json",
+        *io_flags,
         "--model", model,
         "--tools", "",
         "--strict-mcp-config",
@@ -68,6 +78,29 @@ def parse_claude(stdout: str, stderr: str, code: int) -> tuple[str, ModelUsage, 
     return data["result"], usage, model_id
 
 
+def claude_stdin(prompt: str, images: list[Path]) -> str:
+    """One stream-json user message: the images, then the prompt text."""
+    content = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                     "data": base64.b64encode(p.read_bytes()).decode()}}
+        for p in images
+    ]
+    content.append({"type": "text", "text": prompt})
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}})
+
+
+def parse_claude_stream(stdout: str, stderr: str, code: int) -> tuple[str, ModelUsage, str]:
+    """The final {"type":"result"} line carries the same fields as --output-format json."""
+    for line in reversed(stdout.splitlines()):
+        try:
+            data = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get("type") == "result":
+            return parse_claude(line, stderr, code)
+    raise classify_failure(stdout[-500:] + "\n" + stderr)
+
+
 class ClaudeCLIAPI(ModelAPI):
     def __init__(
         self,
@@ -91,8 +124,16 @@ class ClaudeCLIAPI(ModelAPI):
         if tools:
             raise CLIError("tool tasks unsupported on CLI providers")
         system, prompt = serialise_messages(input)
-        code, out, err = await run_cli(claude_argv(self.model_name, system, self.effort), prompt, self.timeout_s)
-        text, usage, reported = parse_claude(out, err, code)
+        with tempfile.TemporaryDirectory(prefix="mb-claude-img-") as d:
+            images = extract_images(input, Path(d))
+            if images:
+                argv = claude_argv(self.model_name, system, self.effort, with_images=True)
+                code, out, err = await run_cli(argv, claude_stdin(prompt, images), self.timeout_s)
+                text, usage, reported = parse_claude_stream(out, err, code)
+            else:
+                argv = claude_argv(self.model_name, system, self.effort)
+                code, out, err = await run_cli(argv, prompt, self.timeout_s)
+                text, usage, reported = parse_claude(out, err, code)
         output = ModelOutput.from_content(model=reported or self.model_name, content=text)
         output.usage = usage
         return output

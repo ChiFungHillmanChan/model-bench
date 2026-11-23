@@ -1,3 +1,4 @@
+import re
 from typer.testing import CliRunner
 
 from model_bench.cli import app
@@ -33,7 +34,9 @@ def test_bench_plan_shows_items_skips_and_estimate(tmp_path, monkeypatch):
     assert "aime2025" in result.output
     assert "missing capability: reasoning" in result.output  # text-only lacks reasoning
     assert "Estimated cost: $" in result.output
-    assert "Quota: claude-cli-opus-5-5: 40 samples" in result.output  # 4 tasks x 10
+    # 4 public tasks x 10, plus whatever private tasks the registry holds
+    quota = re.search(r"Quota: claude-cli-opus-5-5: (\d+) samples", result.output)
+    assert quota and int(quota.group(1)) >= 40
 
 
 def test_bench_plan_unknown_model_errors():

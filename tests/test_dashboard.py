@@ -68,13 +68,15 @@ def test_build_data_runs_and_models(tmp_path):
     assert data["models"] == ["opus", "qwen"]  # fixed order -> fixed colours
 
 
-def test_build_data_questions_with_marks(tmp_path):
+def test_dashboard_carries_no_questions_or_answers(tmp_path):
+    # Question text, answer keys and model answers stay in results.duckdb, never in the page.
     data = build_data(two_run_db(tmp_path))
-    q = [x for x in data["questions"] if x["run_id"] == "r1" and x["sample_id"] == "s2"][0]
-    assert q["input"] == "Question s2?" and q["target"] == "A"
-    assert q["answers"]["opus"]["mark"] == "wrong" and q["answers"]["qwen"]["mark"] == "wrong"
-    q9 = [x for x in data["questions"] if x["run_id"] == "r2" and x["sample_id"] == "s9"][0]
-    assert q9["answers"]["opus"]["mark"] == "error"
+    assert "questions" not in data
+    out = tmp_path / "d.html"
+    (tmp_path / "b").mkdir()
+    write_dashboard(two_run_db(tmp_path / "b"), out)
+    html = out.read_text()
+    assert "s-q" not in html and "questionsCard" not in html and "Mistakes" not in html
 
 
 def test_write_dashboard_is_self_contained(tmp_path):
@@ -84,7 +86,7 @@ def test_write_dashboard_is_self_contained(tmp_path):
     assert html.startswith("<!doctype html>")
     assert not re.search(r"<script[^>]+src=", html)  # no external scripts: file works offline
     for heading in ["Bench score", "Time per question", "Cost per question", "Score by task", "Score vs cost",
-                    "Degradation watch", "Leaderboard", "Runs", "Questions"]:
+                    "Degradation watch", "Leaderboard", "Runs"]:
         assert heading in html
     data = json.loads(re.search(r'<script id="bench-data" type="application/json">(.*?)</script>', html, re.S).group(1))
     assert data["models"] == ["opus", "qwen"]
@@ -120,3 +122,49 @@ def test_build_data_per_question_cost_and_tokens(tmp_path):
     q = rows[("r1", "qwen")]
     assert q["out_tokens_per_q"] == round(q["out_tokens"] / q["samples"], 1)
     assert data["tasks"]["gpqa"] == {"title": "gpqa", "field": "reasoning", "about": ""}
+
+
+def test_dashboard_pools_error_rates(tmp_path):
+    db = two_run_db(tmp_path)
+    con = duckdb.connect(str(db))
+    rows = [("s0", {"values_bad": 1, "values_n": 10, "missed_bad": 1, "missed_n": 1, "false_alarm_bad": 0, "false_alarm_n": 0}),
+            ("s1", {"values_bad": 3, "values_n": 10, "missed_bad": 0, "missed_n": 1, "false_alarm_bad": 1, "false_alarm_n": 1}),
+            ("s2", {"values_bad": 0, "values_n": 0, "missed_bad": 0, "missed_n": 0, "false_alarm_bad": 0, "false_alarm_n": 1})]
+    for sid, rates in rows:
+        for k, v in rates.items():
+            con.execute("insert into scores values (?,?,?,?,?,?,?,?)", ["r2", "gpqa", "opus", sid, 1, f"rates.{k}", v, str(v)])
+    con.close()
+    data = build_data(db)
+    r = next(x for x in data["results"] if x["run_id"] == "r2" and x["model"] == "opus")
+    assert r["rates_pct"]["values"] == 20.0
+    assert r["rates_pct"]["missed"] == 50.0 and r["rates_pct"]["false_alarm"] == 50.0
+    assert r["rates_pct"]["balanced_accuracy"] == 50.0
+    other = next(x for x in data["results"] if x["run_id"] == "r1")
+    assert other["rates_pct"] == {}
+
+
+def test_dashboard_task_titles_come_from_the_registry(tmp_path):
+    reg = tmp_path / "registry.yaml"
+    reg.write_text("""
+tasks:
+  - name: gpqa
+    source: local:tasks/x.py@x
+    category: reasoning
+    title: "Hidden task"
+    about: "Described privately."
+    needs: [text]
+    tiers: {smoke: {limit: 1, epochs: 1}}
+    split: test
+    version: "1"
+    scorer_kind: deterministic
+    est_tokens_per_sample: [1, 1]
+""")
+    data = build_data(two_run_db(tmp_path), tasks_path=reg)
+    assert data["tasks"]["gpqa"]["title"] == "Hidden task" and data["tasks"]["gpqa"]["about"] == "Described privately."
+
+
+def test_rate_labels_cover_the_pooled_metrics():
+    from model_bench.dashboard import RATE_LABELS
+
+    for m in ["values", "missed", "false_alarm", "facts", "overflow", "invented", "balanced_accuracy", "scorer_error"]:
+        assert m in RATE_LABELS

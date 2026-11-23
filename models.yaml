@@ -33,7 +33,7 @@ models:
     label: "Claude Opus 5.5"
     access: cli
     inspect_model: claude-cli/claude-opus-5-5   # exact id, not the moving "opus" alias
-    caps: [text, reasoning, json, "ctx:200000"]
+    caps: [text, reasoning, json, vision, "ctx:200000"]
     params: {effort: high}
     sealed_ok: true
 
@@ -41,7 +41,7 @@ models:
     label: "Claude Sonnet 5.5"
     access: cli
     inspect_model: claude-cli/claude-sonnet-5-5
-    caps: [text, reasoning, json, "ctx:200000"]
+    caps: [text, reasoning, json, vision, "ctx:200000"]
     params: {effort: high}  # same thinking level as Opus 5.5 for a like-for-like comparison
     sealed_ok: true
 
@@ -49,14 +49,14 @@ models:
     label: "GPT-6.2 Astra (Codex)"
     access: cli
     inspect_model: codex-cli/gpt-6.2-astra
-    caps: [text, reasoning, json, "ctx:200000"]
+    caps: [text, reasoning, json, vision, "ctx:200000"]
     sealed_ok: true
 
   - id: claude-cli-haiku-5-5
     label: Claude Haiku 5.5
     inspect_model: claude-cli/claude-haiku-5-5
     access: cli
-    caps: ['ctx:200000', json, reasoning, text]
+    caps: ['ctx:200000', json, reasoning, text, vision]
     params: {effort: high}
     sealed_ok: true
 
@@ -64,7 +64,7 @@ models:
     label: GPT-6.2 Astra (Codex)
     inspect_model: codex-cli/gpt-6.2-astra
     access: cli
-    caps: ['ctx:200000', json, reasoning, text]
+    caps: ['ctx:200000', json, reasoning, text, vision]
     params: {effort: high}
     sealed_ok: true
 
@@ -72,6 +72,13 @@ models:
     label: GPT-6.2 Sol (Codex)
     inspect_model: codex-cli/gpt-6.2-sol
     access: cli
-    caps: ['ctx:200000', json, reasoning, text]
+    caps: ['ctx:200000', json, reasoning, text, vision]
     params: {effort: high}
     sealed_ok: true
+
+  - id: ollama-qwen3-vl-8b
+    label: Qwen3-VL 8B (Ollama)
+    inspect_model: ollama/qwen3-vl:8b
+    access: local
+    sealed_ok: true
+    caps: [text, json, vision, 'ctx:32000']

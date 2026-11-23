@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","cwd":"/tmp/x","tools":[],"mcp_servers":[],"model":"claude-x"}
+{"type":"assistant","message":{"model":"claude-x","role":"assistant","content":[{"type":"text","text":"42"}]}}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}
+{"type":"result","subtype":"success","is_error":false,"result":"42","usage":{"input_tokens":3,"cache_creation_input_tokens":500,"cache_read_input_tokens":10,"output_tokens":7},"modelUsage":{"claude-x":{}}}

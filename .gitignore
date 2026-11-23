@@ -9,3 +9,6 @@ blind/keys/
 __pycache__/
 *.pyc
 .pytest_cache/
+# Private tasks: code, data, tests and docs stay on this Mac only
+tasks/private/
+docs/private/

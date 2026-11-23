@@ -266,3 +266,77 @@ def test_codex_argv_switches_off_tools_web_search_and_skills(tmp_path, monkeypat
 def test_parse_codex_web_search_is_error():
     with pytest.raises(CLIBadOutput, match="web_search"):
         parse_codex((FIX / "codex_websearch.jsonl").read_text(), "", 0, "B")
+
+
+# --- image input (vision tasks) ---
+import base64
+import io
+import json as _json
+
+from inspect_ai.model import ContentImage, ContentText
+from PIL import Image
+
+from model_bench.providers.claude_cli import claude_stdin, parse_claude_stream
+from model_bench.providers.cli_common import extract_images
+
+
+def _png(w=20, h=10) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), "red").save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_extract_images_writes_data_uri_and_path(tmp_path):
+    src = tmp_path / "a.png"
+    src.write_bytes(_png(30, 10))
+    uri = "data:image/png;base64," + base64.b64encode(_png(20, 10)).decode()
+    msgs = [
+        ChatMessageUser(content=[ContentImage(image=uri), ContentText(text="first")]),
+        ChatMessageUser(content=[ContentImage(image=str(src)), ContentText(text="second")]),
+    ]
+    paths = extract_images(msgs, tmp_path / "out")
+    assert len(paths) == 2
+    assert Image.open(paths[0]).size == (20, 10)
+    assert Image.open(paths[1]).size == (30, 10)
+
+
+def test_images_are_capped(tmp_path):
+    src = tmp_path / "big.png"
+    src.write_bytes(_png(4000, 3000))
+    (p,) = extract_images([ChatMessageUser(content=[ContentImage(image=str(src))])], tmp_path / "o")
+    assert max(Image.open(p).size) == 1600
+
+
+def test_claude_argv_stream_json_when_images():
+    plain = claude_argv("m", None, None)
+    img = claude_argv("m", None, None, with_images=True)
+    assert "stream-json" not in plain
+    assert img[img.index("--input-format") + 1] == "stream-json"
+    assert img[img.index("--output-format") + 1] == "stream-json"
+    for argv in (plain, img):
+        assert argv[argv.index("--tools") + 1] == ""
+        assert "--strict-mcp-config" in argv
+        assert argv[argv.index("--setting-sources") + 1] == ""
+
+
+def test_claude_stdin_puts_images_before_text(tmp_path):
+    p = tmp_path / "x.png"
+    p.write_bytes(_png())
+    line = _json.loads(claude_stdin("hello", [p]))
+    content = line["message"]["content"]
+    assert [c["type"] for c in content] == ["image", "text"]
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert content[1]["text"] == "hello"
+
+
+def test_parse_claude_stream_reads_result_line():
+    text, usage, model = parse_claude_stream((FIX / "claude_stream.jsonl").read_text(), "", 0)
+    assert (text, model) == ("42", "claude-x")
+    assert usage.output_tokens == 7 and usage.input_tokens_cache_write == 500
+
+
+def test_codex_argv_images_before_stdin(tmp_path):
+    img = tmp_path / "x.png"
+    argv = codex_argv("gpt-x", tmp_path / "l", None, images=[img])
+    assert argv[-1] == "-"
+    assert argv[argv.index("-i") + 1] == str(img)

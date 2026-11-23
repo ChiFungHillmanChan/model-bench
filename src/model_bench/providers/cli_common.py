@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import os
 import re
 import tempfile
 from pathlib import Path
 
-from inspect_ai.model import ChatMessage, ChatMessageAssistant, ChatMessageSystem
+from inspect_ai.model import ChatMessage, ChatMessageAssistant, ChatMessageSystem, ContentImage
 
 # Only these variables reach a CLI: no API keys, base URLs, provider switches or parent-session vars.
 ENV_ALLOWLIST = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "SHELL")
 DEFAULT_TIMEOUT_S = 600
+MAX_IMAGE_SIDE = 1600  # long side in px; an A4 render at print DPI is far larger than a CLI needs
 
 _LIMIT = re.compile(r"usage limit|hit your limit|limit reached|rate limit|quota", re.I)
 _AUTH = re.compile(r"/login|not logged in|log in|invalid api key|authenticat|unauthori[sz]ed", re.I)
@@ -71,6 +74,30 @@ def serialise_messages(messages: list[ChatMessage]) -> tuple[str | None, str]:
     else:
         prompt = "\n\n".join(f"[{m.role}]\n{m.text}" for m in turns)
     return ("\n\n".join(system) if system else None), prompt
+
+
+def extract_images(messages: list[ChatMessage], dest: Path) -> list[Path]:
+    """Write every image in the messages to dest as PNG (long side capped), in message order."""
+    from PIL import Image
+
+    dest.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for m in messages:
+        if isinstance(m.content, str):
+            continue
+        for c in m.content:
+            if not isinstance(c, ContentImage):
+                continue
+            src = c.image
+            if src.startswith("data:"):
+                img = Image.open(io.BytesIO(base64.b64decode(src.split(",", 1)[1])))
+            else:
+                img = Image.open(src)
+            img.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            out = dest / f"image-{len(paths):02d}.png"
+            img.save(out, "PNG")
+            paths.append(out)
+    return paths
 
 
 async def run_cli(argv: list[str], stdin: str | None, timeout_s: int) -> tuple[int, str, str]:

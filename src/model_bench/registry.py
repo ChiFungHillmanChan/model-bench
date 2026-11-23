@@ -85,6 +85,8 @@ class TaskEntry(_Strict):
     sealed: bool = False
     est_tokens_per_sample: tuple[int, int]
     task_args: dict[str, Any] = {}
+    title: str | None = None  # dashboard name; tasks without one show their name
+    about: str | None = None  # one-line dashboard description
 
     _v_needs = field_validator("needs", mode="before")(lambda cls, v: _check_caps(v))
 
@@ -116,7 +118,15 @@ def load_models(path: Path) -> dict[str, ModelEntry]:
 
 
 def load_tasks(path: Path) -> dict[str, TaskEntry]:
-    return _load(path, "tasks", TaskEntry)
+    """The registry plus, when present, the untracked private/registry.yaml next to it."""
+    tasks = _load(path, "tasks", TaskEntry)
+    private = Path(path).parent / "private" / "registry.yaml"
+    if private.exists():
+        for name, entry in _load(private, "tasks", TaskEntry).items():
+            if name in tasks:
+                raise RegistryError(f"{private}: duplicate entry {name}")
+            tasks[name] = entry
+    return tasks
 
 
 def append_model(path: Path, entry: dict[str, Any]) -> ModelEntry:

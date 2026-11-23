@@ -53,3 +53,5 @@ tasks:
     version: "1"
     scorer_kind: deterministic
     est_tokens_per_sample: [500, 8000]
+
+  # Private tasks go in tasks/private/registry.yaml (untracked); load_tasks merges it when present.

@@ -9,7 +9,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-from model_bench.registry import RegistryError, load_models
+from model_bench.registry import RegistryError, load_models, load_tasks
 from model_bench.report import CLI_BINARIES, THINKING_KEYS, _headlines, _obs
 from model_bench.stats import clustered_mean, epoch_agreement, pass_hat_k
 
@@ -24,6 +24,32 @@ TASK_INFO = {
                          "prompt-level strict accuracy."),
     "aime2025": ("AIME 2025", "30 American Invitational Mathematics Examination 2025 problems; integer answers."),
 }
+# Error rates of tasks whose scorer reports rates.<m>_bad / rates.<m>_n: pooled sum(rates.<m>_bad) / sum(rates.<m>_n), shown as percentages.
+RATE_LABELS = {
+    "values": "values wrong", "names": "names wrong", "labels": "labels missing", "schema": "invalid format",
+    "type": "wrong chart type", "invented": "invented data", "missed": "broken pages passed (miss)",
+    "false_alarm": "clean pages failed", "balanced_accuracy": "balanced accuracy",
+    "types_missed": "defect types missed", "types_extra": "defect types made up", "facts": "facts missing",
+    "table": "table wrong", "lang": "HK Chinese rule broken", "overflow": "runs past page", "overlap": "text overlaps",
+    "tiny": "text under 8 pt", "chart": "chart wrong", "scorer_error": "answers that broke the scorer",
+}
+
+
+def _rates(con, run_id: str, task: str, model: str) -> dict[str, float]:
+    rows = con.execute(
+        "select scorer, sum(value_num) from scores where run_id=? and task=? and model_id=?"
+        " and scorer like 'rates.%' group by scorer", [run_id, task, model]).fetchall()
+    sums = {name.removeprefix("rates."): total or 0.0 for name, total in rows}
+    out = {}
+    for k, bad in sums.items():
+        if k.endswith("_bad"):
+            m = k[:-4]
+            n = sums.get(f"{m}_n", 0.0)
+            if n:
+                out[m] = round(100 * bad / n, 1)
+    if "missed" in out and "false_alarm" in out:
+        out["balanced_accuracy"] = round(100 - (out["missed"] + out["false_alarm"]) / 2, 1)
+    return out
 
 
 def _pct(v: float | None) -> float | None:
@@ -36,22 +62,28 @@ def _parse_time(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def build_data(db: Path, models_path: Path | None = None) -> dict:
+def build_data(db: Path, models_path: Path | None = None, tasks_path: Path | None = None) -> dict:
     labels = {}
     if models_path and Path(models_path).exists():
         try:
             labels = {k: m.label for k, m in load_models(models_path).items() if m.label}
         except RegistryError:
             labels = {}
+    info = dict(TASK_INFO)
+    if tasks_path and Path(tasks_path).exists():
+        try:
+            info |= {k: (t.title or k, t.about or "") for k, t in load_tasks(tasks_path).items() if t.title or t.about}
+        except RegistryError:
+            pass
     con = duckdb.connect(str(db), read_only=True)
     try:
-        return _build(con, labels)
+        return _build(con, labels, info)
     finally:
         con.close()
 
 
-def _build(con, labels: dict[str, str]) -> dict:
-    runs_out, results, questions = [], [], []
+def _build(con, labels: dict[str, str], info: dict[str, tuple[str, str]]) -> dict:
+    runs_out, results = [], []
     model_info: dict[str, dict] = {}
     tasks_info: dict[str, dict] = {}
     run_rows = con.execute(
@@ -64,7 +96,7 @@ def _build(con, labels: dict[str, str]) -> dict:
             manifest = {}
         fields = {t["name"]: t.get("category", "") for t in manifest.get("tasks") or []}
         for name, field in fields.items():
-            title, about = TASK_INFO.get(name, (name, ""))
+            title, about = info.get(name, (name, ""))
             tasks_info.setdefault(name, {"title": title, "field": field, "about": about})
         thinking = {}
         for e in manifest.get("models") or []:
@@ -129,24 +161,9 @@ def _build(con, labels: dict[str, str]) -> dict:
                 "out_tokens": out_tokens, "epochs": epochs,
                 "cost_per_q": None if access == "cli" else round((cost or 0.0) / total, 6) if total else None,
                 "out_tokens_per_q": round(out_tokens / total, 1) if total and out_tokens is not None else None,
+                "rates_pct": _rates(con, run_id, task, model),
             })
 
-        rows = _question_rows(con, run_id, heads)
-        by_q: dict[tuple, dict] = {}
-        for task, sid, model, text, target, answer, errored, value in rows:
-            q = by_q.setdefault((task, sid), {
-                "run_id": run_id, "date": date, "task": task, "field": fields.get(task, ""),
-                "sample_id": sid, "input": (text or "")[:1500], "target": (target or "")[:300], "answers": {},
-            })
-            if errored and value is None:
-                mark = "error"
-            elif value is None:
-                mark = "unscored"
-            else:
-                mark = "correct" if value >= 0.5 else "wrong"
-            q["answers"][model] = {"answer": (answer or "")[:800], "mark": mark,
-                                   "score": None if value is None else round(value, 3)}
-        questions.extend(by_q.values())
 
     models = [m for (m,) in con.execute("select distinct model_id from samples order by 1").fetchall()]
     for run in runs_out:
@@ -157,41 +174,18 @@ def _build(con, labels: dict[str, str]) -> dict:
                 info["last_date"] = run["date"]
     return {
         "generated": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "models": models, "model_info": model_info, "tasks": tasks_info,
-        "runs": runs_out, "results": results, "questions": questions,
+        "models": models, "model_info": model_info, "tasks": tasks_info, "rate_labels": RATE_LABELS,
+        "runs": runs_out, "results": results,
     }
 
 
-def _question_rows(con, run_id: str, heads: dict[str, str]) -> list[tuple]:
-    rows = []
-    for task, scorer in sorted(heads.items()):
-        rows += con.execute(
-            "select s.task, s.sample_id, s.model_id, any_value(s.input_text), any_value(s.target),"
-            " any_value(s.answer) filter (where s.epoch = 1), bool_or(s.error is not null), avg(sc.value_num)"
-            " from samples s left join scores sc on sc.run_id=s.run_id and sc.task=s.task"
-            " and sc.model_id=s.model_id and sc.sample_id=s.sample_id and sc.epoch=s.epoch and sc.scorer=?"
-            " where s.run_id=? and s.task=? group by s.task, s.sample_id, s.model_id order by s.sample_id",
-            [scorer, run_id, task],
-        ).fetchall()
-    unscored_tasks = [t for (t,) in con.execute(
-        "select distinct task from samples where run_id=?", [run_id]).fetchall() if t not in heads]
-    for task in unscored_tasks:  # every sample errored: still list the questions
-        rows += con.execute(
-            "select task, sample_id, model_id, any_value(input_text), any_value(target),"
-            " any_value(answer) filter (where epoch = 1), bool_or(error is not null), null"
-            " from samples where run_id=? and task=? group by task, sample_id, model_id order by sample_id",
-            [run_id, task],
-        ).fetchall()
-    return rows
-
-
 def render(data: dict) -> str:
-    # < keeps any "</script>" inside question text from closing the data block
+    # < keeps any "</script>" inside a label from closing the data block
     payload = json.dumps(data, default=str).replace("<", "\\u003c")
     return TEMPLATE.read_text().replace("__BENCH_DATA__", payload)
 
 
-def write_dashboard(db: Path, out: Path, models_path: Path | None = None) -> Path:
+def write_dashboard(db: Path, out: Path, models_path: Path | None = None, tasks_path: Path | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(build_data(db, models_path)))
+    out.write_text(render(build_data(db, models_path, tasks_path)))
     return out

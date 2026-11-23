@@ -106,12 +106,7 @@ th { color: var(--ink-2); font-weight: 500; font-size: 12px; white-space: nowrap
 td.num, th.num { text-align: right; }
 td.nw { white-space: nowrap; }
 tr.focus td { background: var(--band); }
-.mark { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
-.q { max-width: 440px; white-space: pre-wrap; word-break: break-word; }
-.ans { max-width: 300px; white-space: pre-wrap; word-break: break-word; color: var(--ink-2); font-size: 12px; }
 details summary { cursor: pointer; color: var(--ink-2); }
-.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 10px; }
-.filters label { color: var(--ink-2); font-size: 13px; display: flex; gap: 6px; align-items: center; min-width: 0; max-width: 100%; }
 .empty { color: var(--muted); padding: 28px 0; text-align: center; }
 #tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink);
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
@@ -153,7 +148,15 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
   const label = (m) => info(m).label || m;
   const ACCESS = { cli: "via CLI (subscription)", api: "API (pay per token)", local: "Local (this Mac)" };
   const taskTitle = (t) => (D.tasks[t] || {}).title || t;
-  const FIELD = { math: "Math", reasoning: "Science reasoning", knowledge: "Knowledge", instruction_following: "Instruction following" };
+  const FIELD = { math: "Math", reasoning: "Science reasoning", knowledge: "Knowledge", instruction_following: "Instruction following", private: "Private" };
+  const rateText = (r) => Object.entries(r.rates_pct || {}).map(([k, v]) => `${(D.rate_labels || {})[k] || k} ${pct(v)}`).join(" | ");
+  function ratesTable(rs, focus) {
+    const keys = uniq(rs.flatMap((r) => Object.keys(r.rates_pct || {})));
+    if (!keys.length) return "";
+    return `<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Error rates</th>${keys.map((k) => `<th class="num">${esc((D.rate_labels || {})[k] || k)}</th>`).join("")}</tr></thead><tbody>
+      ${rs.map((r) => `<tr class="${r.model === focus ? "focus" : ""}"><td class="nw">${modelLink(r.model)}</td>${keys.map((k) => `<td class="num">${r.rates_pct[k] == null ? "-" : pct(r.rates_pct[k])}</td>`).join("")}</tr>`).join("")}
+      </tbody></table></div><p class="note">Pooled over every answer. Lower is better, except balanced accuracy.</p>`;
+  }
   const field = (t) => { const f = (D.tasks[t] || {}).field || ""; return FIELD[f] || f; };
 
   // ---------- formatting ----------
@@ -362,10 +365,6 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
   // ---------- shared building blocks ----------
   const legend = (models) => models.length > 1 ? `<div class="legend">${models.map((m) => `<span>${swatch(m)}${esc(label(m))}</span>`).join("")}</div>` : "";
   const aggTip = (a) => `<b>${esc(label(a.model))}</b><br>Bench score ${pct(a.index)} over ${a.k} of ${a.K} tasks<br>Time per question ${secs(a.p50)} (median)<br>Cost per question ${costText(a)}<br>Error rate ${pct(a.err)} | answers ${a.samples}`;
-  const markHtml = (m) => {
-    const c = { correct: "var(--good)", wrong: "var(--critical)", error: "var(--warning)" }[m] || "var(--muted)";
-    return `<span class="mark"><i class="sw" style="background:${c}"></i>${esc(m)}</span>`;
-  };
 
   function comparisonCards(aggs, focus) {
     const scoreItems = aggs.map((a) => ({ model: a.model, v: a.index, tip: aggTip(a) }));
@@ -393,7 +392,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         tip: `<b>${esc(label(r.model))}</b><br>${esc(taskTitle(t))}<br>Score ${pct(r.score_pct)} [${pct(r.ci_low_pct)}, ${pct(r.ci_high_pct)}]<br>Marks ${r.correct}/${r.answered} | errors ${r.errors} (${pct(r.error_rate_pct)})<br>Thinking ${esc(r.thinking)} | ${esc(r.tier)} | ${when(r.date)}` }));
       return `<div class="card"><h4>${esc(taskTitle(t))} <span class="chip" style="margin-left:6px">${esc(field(t))}</span></h4>
         <div class="desc">${esc((D.tasks[t] || {}).about || "")} This tier: ${r0.items} questions x ${r0.epochs} pass(es). Whiskers: 95% confidence interval. Higher is better.</div>
-        ${chart(bars(items, { higher: true, fmt: f1, focus, max: 100, ci: true, h: 230, aria: "Scores for " + t }), 230)}</div>`;
+        ${chart(bars(items, { higher: true, fmt: f1, focus, max: 100, ci: true, h: 230, aria: "Scores for " + t }), 230)}${ratesTable(rs, focus)}</div>`;
     }).join("")}</div>`;
   }
 
@@ -432,7 +431,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
       ${aggs.map((a, i) => `<tr class="${a.model === focus ? "focus" : ""}"><td>${i + 1}</td><td class="nw">${modelLink(a.model)}</td>
         <td class="nw">${esc(a.access === "cli" ? "via CLI" : a.access)}</td><td>${esc(info(a.model).thinking || "default")}</td>
         <td class="num"><b>${pct(a.index)}</b>${a.k < a.K ? ` <span class="chip">${a.k}/${a.K}</span>` : ""}</td>
-        ${tasks.map((t) => { const r = a.tasks[t]; return `<td class="num" ${r ? `data-tip="${esc(`${r.correct}/${r.answered} correct | CI ${pct(r.ci_low_pct)} - ${pct(r.ci_high_pct)}`)}"` : ""}>${r ? pct(r.score_pct) : "-"}</td>`; }).join("")}
+        ${tasks.map((t) => { const r = a.tasks[t]; return `<td class="num" ${r ? `data-tip="${esc(`${r.correct}/${r.answered} correct | CI ${pct(r.ci_low_pct)} - ${pct(r.ci_high_pct)}${rateText(r) ? "<br>" + rateText(r) : ""}`)}"` : ""}>${r ? pct(r.score_pct) : "-"}</td>`; }).join("")}
         <td class="num">${secs(a.p50)}</td><td class="num">${costText(a)}</td><td class="num">${toks(a.tokQ)}</td>
         <td class="num">${pct(a.err)}</td><td class="num">${pct(a.agr)}</td><td class="nw">${day(a.date)}</td></tr>`).join("")}
       </tbody></table></div>
@@ -458,40 +457,6 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         <td class="nw">${r.models.map(modelLink).join("<br>")}</td><td class="num">${r.samples}</td><td class="num">${pct(r.error_rate_pct)}</td>
         <td class="num">${r.duration_min == null ? "n/a" : r.duration_min + " min"}</td><td class="num">${usd(r.spend_usd || 0)}</td></tr>`).join("")}
       </tbody></table></div></div>`;
-  }
-
-  function questionsCard(focus) {
-    const runs = D.runs.filter((r) => !focus || r.models.includes(focus));
-    if (!runs.length) return '<div class="empty">No runs yet.</div>';
-    const modes = focus ? [["mine", "this model wrong or error"], ["all", "all"]] : [["all", "all"], ["disagree", "models disagree"], ["wrong", "any wrong"], ["error", "any error"]];
-    return `<div class="card"><div class="filters">
-        <label>Run <select id="q-run">${runs.map((r) => `<option value="${esc(r.run_id)}">${esc(day(r.date) + "  " + r.run_id + " (" + r.tier + ")")}</option>`).join("")}</select></label>
-        <label>Show <select id="q-mode">${modes.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></label>
-        <label>Search <input id="q-find" type="search" placeholder="question text or id"></label></div>
-      <div class="tablewrap" id="q-table"></div><p class="note" id="q-note"></p></div>`;
-  }
-  function paintQuestions(focus) {
-    const box = $("q-table"); if (!box) return;
-    const run = $("q-run").value, mode = $("q-mode").value, needle = $("q-find").value.trim().toLowerCase();
-    let qs = D.questions.filter((q) => q.run_id === run);
-    const models = D.models.filter((m) => qs.some((q) => q.answers[m]));
-    qs = qs.filter((q) => {
-      const marks = Object.values(q.answers).map((a) => a.mark);
-      if (mode === "mine" && !(q.answers[focus] && ["wrong", "error"].includes(q.answers[focus].mark))) return false;
-      if (mode === "disagree" && new Set(marks).size < 2) return false;
-      if (mode === "wrong" && !marks.includes("wrong")) return false;
-      if (mode === "error" && !marks.includes("error")) return false;
-      return !needle || (q.input + " " + q.sample_id).toLowerCase().includes(needle);
-    });
-    const shown = qs.slice(0, 300);
-    $("q-note").textContent = qs.length > shown.length ? `Showing ${shown.length} of ${qs.length}. Narrow with the filters.` : `${qs.length} question(s).`;
-    if (!shown.length) { box.innerHTML = '<div class="empty">Nothing matches.</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>Task</th><th>Id</th><th>Question</th><th>Expected</th>${models.map((m) => `<th class="nw">${swatch(m)} ${esc(label(m))}</th>`).join("")}</tr></thead><tbody>
-      ${shown.map((q) => `<tr><td class="nw">${esc(taskTitle(q.task))}</td><td>${esc(q.sample_id)}</td>
-        <td class="q"><details><summary>${esc(q.input.slice(0, 140))}${q.input.length > 140 ? "..." : ""}</summary>${esc(q.input)}</details></td>
-        <td class="ans">${esc(q.target)}</td>
-        ${models.map((m) => { const a = q.answers[m]; return a ? `<td>${markHtml(a.mark)}<details><summary>answer</summary><div class="ans">${esc(a.answer || "(no answer)")}</div></details></td>` : "<td>-</td>"; }).join("")}</tr>`).join("")}
-      </tbody></table>`;
   }
 
   const sideNav = (items) => `<nav class="side">${items.map(([id, t]) => `<a href="#" data-jump="${id}">${t}</a>`).join("")}</nav>`;
@@ -534,7 +499,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         <div class="specs"><h3>Tasks in this tier</h3><dl>${coverage || "<dt>none</dt><dd></dd>"}</dl></div></div>
     </div></div>
     <div class="wrap"><div class="body">
-      ${sideNav([["s-compare", "Model comparison"], ["s-task", "Score by task"], ["s-scatter", "Score vs cost"], ["s-history", "Degradation watch"], ["s-board", "Leaderboard"], ["s-runs", "Runs"], ["s-q", "Questions"]])}
+      ${sideNav([["s-compare", "Model comparison"], ["s-task", "Score by task"], ["s-scatter", "Score vs cost"], ["s-history", "Degradation watch"], ["s-board", "Leaderboard"], ["s-runs", "Runs"]])}
       <main>
         ${sec("s-compare", "Model comparison")}${comparisonCards(aggs)}
         ${sec("s-task", "Score by task")}${byTaskCards(rows)}
@@ -542,8 +507,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         ${sec("s-history", "Degradation watch")}${historyCards()}
         ${sec("s-board", "Leaderboard")}${leaderboard(aggs)}
         ${sec("s-runs", "Runs")}${runsTable()}
-        ${sec("s-q", "Questions")}${questionsCard()}
-      </main></div><footer>Generated ${when(D.generated)} from results.duckdb. This file makes no network requests; questions and answers stay on this Mac.</footer></div>`;
+      </main></div><footer>Generated ${when(D.generated)} from results.duckdb. This file makes no network requests and holds no question text or answers.</footer></div>`;
   }
 
   function modelPage(m) {
@@ -584,14 +548,13 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         <div class="specs"><h3>Model settings</h3><dl>${specs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div></div>
     </div></div>
     <div class="wrap"><div class="body">
-      ${sideNav([["s-compare", "Model comparison"], ["s-task", "Score by task"], ["s-scatter", "Score vs cost"], ["s-history", "History"], ["s-board", "Leaderboard"], ["s-q", "Mistakes"]])}
+      ${sideNav([["s-compare", "Model comparison"], ["s-task", "Score by task"], ["s-scatter", "Score vs cost"], ["s-history", "History"], ["s-board", "Leaderboard"]])}
       <main>
         ${sec("s-compare", "Model comparison")}${comparisonCards(aggs, m)}
         ${sec("s-task", "Score by task")}${byTaskCards(rows, m)}
         ${sec("s-scatter", "Score vs cost and speed")}${scatterCard(aggs, m)}
         ${sec("s-history", "History")}${historyCards(m)}
         ${sec("s-board", "Leaderboard")}${leaderboard(aggs, m)}
-        ${sec("s-q", "Mistakes")}${questionsCard(m)}
       </main></div><footer>Generated ${when(D.generated)}. Local file; no network requests.</footer></div>`;
   }
 
@@ -599,17 +562,12 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
   function route() { const h = decodeURIComponent(location.hash.slice(1)); return h.startsWith("model/") ? { page: "model", m: h.slice(6) } : { page: "overview" }; }
   function render() {
     const r = route();
-    $("nav").innerHTML = `<a href="#" class="${r.page === "overview" ? "on" : ""}">Overview</a><a href="#" data-jump="s-board">Leaderboard</a><a href="#" data-jump="s-q">Questions</a>`;
+    $("nav").innerHTML = `<a href="#" class="${r.page === "overview" ? "on" : ""}">Overview</a><a href="#" data-jump="s-board">Leaderboard</a>`;
     $("pick-model").innerHTML = `<option value="">Models...</option>` + D.models.map((m) => `<option value="${esc(m)}" ${r.m === m ? "selected" : ""}>${esc(label(m))}</option>`).join("");
     $("pick-tier").innerHTML = ["all"].concat(tiers).map((t) => `<option value="${t}" ${S.tier === t ? "selected" : ""}>${t === "all" ? "latest, any tier" : t}</option>`).join("");
     for (const k in CHARTS) delete CHARTS[k];
     $("view").innerHTML = r.page === "model" ? modelPage(r.m) : overview();
     paintCharts();
-    if ($("q-run")) {
-      ["q-run", "q-mode"].forEach((id) => $(id).addEventListener("change", () => paintQuestions(r.m)));
-      $("q-find").addEventListener("input", () => paintQuestions(r.m));
-      paintQuestions(r.m);
-    }
     document.title = r.page === "model" ? label(r.m) + " - Model Bench" : "Model Bench";
   }
   document.addEventListener("click", (ev) => {

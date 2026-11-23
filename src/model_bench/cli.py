@@ -171,10 +171,10 @@ def repro() -> None:
 
 @app.command()
 def dashboard() -> None:
-    """Write reports/dashboard.html: charts, leaderboard, runs and per-question marks (local file)."""
+    """Write reports/dashboard.html: charts, leaderboard and runs (local file, no question text)."""
     from model_bench.dashboard import write_dashboard
 
-    out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html", MODELS_PATH)
+    out = write_dashboard(DB_PATH, REPORTS_DIR / "dashboard.html", MODELS_PATH, TASKS_PATH)
     typer.echo(f"wrote {out}")
 
 

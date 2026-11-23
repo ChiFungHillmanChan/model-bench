@@ -158,7 +158,7 @@ Dashboard：
 | `isolation check failed` | 暫時移走 `~/.claude/CLAUDE.md`，或者清空 `~/.codex/AGENTS.md` |
 | Dashboard 冇新數據 | 未 ingest：`bench ingest --rebuild && bench dashboard` |
 | Ollama 好慢 | 正常。8B model 喺 Mac 上面，一題可以要幾分鐘 |
-| 想測私人題目 | Phase 2 先做。私人題目只會送去 Claude CLI、Codex CLI 同 Ollama，永遠唔會送去 API |
+| 想測私人題目 | 放喺 `tasks/private/`（只喺本機，唔入 git），登記喺 `tasks/private/registry.yaml`，`bench` 會自動讀埋 |
 
 ---
 

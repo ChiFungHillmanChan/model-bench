@@ -26,6 +26,7 @@ from model_bench.providers.cli_common import (
     CLIError,
     check_isolation,
     classify_failure,
+    extract_images,
     run_cli,
     serialise_messages,
 )
@@ -57,7 +58,7 @@ def _skills_off() -> str:
     return "skills.config=[" + ",".join(f'{{path="{p}", enabled=false}}' for p in paths) + "]"
 
 
-def codex_argv(model: str, out_file: Path, effort: str | None) -> list[str]:
+def codex_argv(model: str, out_file: Path, effort: str | None, images: list[Path] = ()) -> list[str]:
     argv = [
         "codex", "exec",
         "--json",
@@ -77,6 +78,8 @@ def codex_argv(model: str, out_file: Path, effort: str | None) -> list[str]:
         argv += ["--disable", feature]
     if effort:
         argv += ["-c", f"model_reasoning_effort={effort}"]
+    for image in images:
+        argv += ["-i", str(image)]
     return argv + ["-"]
 
 
@@ -162,7 +165,9 @@ class CodexCLIAPI(ModelAPI):
             prompt = f"[system]\n{system}\n\n{prompt}"
         with tempfile.TemporaryDirectory(prefix="mb-codex-out-") as d:
             out_file = Path(d) / "last.txt"
-            code, out, err = await run_cli(codex_argv(self.model_name, out_file, self.effort), prompt, self.timeout_s)
+            images = extract_images(input, Path(d) / "images")
+            argv = codex_argv(self.model_name, out_file, self.effort, images)
+            code, out, err = await run_cli(argv, prompt, self.timeout_s)
             last = out_file.read_text() if out_file.exists() else ""
         text, usage = parse_codex(out, err, code, last)
         output = ModelOutput.from_content(model=self.model_name, content=text)

@@ -97,3 +97,27 @@ def test_task_tiers_and_source(tmp_path):
 def test_repo_registries_load():
     assert load_models(ROOT / "models.yaml")
     assert load_tasks(ROOT / "tasks" / "registry.yaml")
+
+
+def test_private_overlay_merges_when_present(tmp_path):
+    # Private task entries live in an untracked private/registry.yaml next to the public registry.
+    pub = write(tmp_path, TASK.format(source="inspect_evals/gpqa_diamond"), "registry.yaml")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "registry.yaml").write_text(
+        TASK.format(source="private:tasks/private/x.py@x").replace("gpqa_diamond", "my_private")
+        .replace("category: reasoning", 'category: private\n    title: "My task"\n    about: "Mine."'))
+    tasks = load_tasks(pub)
+    assert set(tasks) == {"gpqa_diamond", "my_private"}
+    assert tasks["my_private"].title == "My task" and tasks["my_private"].about == "Mine."
+
+
+def test_private_overlay_absent_is_fine(tmp_path):
+    assert set(load_tasks(write(tmp_path, TASK.format(source="inspect_evals/gpqa_diamond"), "registry.yaml"))) == {"gpqa_diamond"}
+
+
+def test_private_overlay_cannot_shadow_a_public_task(tmp_path):
+    pub = write(tmp_path, TASK.format(source="inspect_evals/gpqa_diamond"), "registry.yaml")
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "registry.yaml").write_text(TASK.format(source="private:tasks/private/x.py@x"))
+    with pytest.raises(RegistryError, match="duplicate"):
+        load_tasks(pub)
