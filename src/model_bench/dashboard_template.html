@@ -437,10 +437,9 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
       lines.forEach((l) => {
         const c = baseColor(l.base);
         if (l.pts.length > 1) s += `<path d="${l.pts.map((p, i) => (i ? "L" : "M") + x(p.x) + "," + y(p.y)).join("")}" fill="none" style="stroke:${c}" stroke-width="2"/>`;
-        l.pts.forEach((p, i) => {  // dot size grows with thinking level; text only on the line's two ends
+        l.pts.forEach((p) => {  // dot size grows with thinking level (key above the charts; hover for the level)
           const r = 3.5 + 1.5 * effRank(p.eff);
           s += `<circle cx="${x(p.x)}" cy="${y(p.y)}" r="${r}" style="fill:${c};stroke:var(--surface)" stroke-width="2"/>`;
-          if (i === 0 || i === l.pts.length - 1) s += T(x(p.x), y(p.y) - r - 5, p.eff, `text-anchor="middle" font-size="10" style="fill:var(--muted)"`);
           s += `<circle cx="${x(p.x)}" cy="${y(p.y)}" r="14" fill="transparent" data-tip="${esc(p.tip)}"/>`;
         });
       });
@@ -471,7 +470,9 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
     const avgRows = models.map((m) => { const rs = rows.filter((r) => r.model === m && swept.includes(r.task));
       return { model: m, score_pct: mean(rs.map((r) => r.score_pct)), p50_s: median(rs.map((r) => r.p50_s).filter((v) => v != null)) }; });
     const bases = ALL_BASES.filter((b) => rows.some((r) => swept.includes(r.task) && baseOf(r.model) === b));
-    const leg = `<div class="legend">${bases.map((b) => `<span>${baseSwatch(b)}${esc(b)}</span>`).join("")}</div>`;
+    const sizes = ["low", "medium", "high", "xhigh"].map((e) => { const r = 3.5 + 1.5 * effRank(e);
+      return `<span><svg width="${2 * r + 4}" height="${2 * r + 4}"><circle cx="${r + 2}" cy="${r + 2}" r="${r}" style="fill:var(--muted)"/></svg>${e}</span>`; }).join("");
+    const leg = `<div class="legend">${bases.map((b) => `<span>${baseSwatch(b)}${esc(b)}</span>`).join("")}</div><div class="legend">Thinking level: ${sizes}</div>`;
     const card = (title, desc, rs, h) => `<div class="card"><h4>${esc(title)}</h4><div class="desc">${desc}</div>${chart(effortChart(effortLines(rs), title + ": accuracy versus time by thinking level"), h)}</div>`;
     const how = "Each dot is one thinking level; bigger dot = more thinking (low, medium, high, xhigh). Up is more accurate, left is faster. A line that rises steeply is worth the extra thinking; a flat line is not.";
     return leg + (swept.length > 1 ? card("Average across " + swept.map(taskTitle).join(", "), how, avgRows, 300) : `<p class="desc">${how}</p>`)
