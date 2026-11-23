@@ -150,9 +150,17 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
 
   // ---------- identity ----------
   // Colour follows the model (fixed order over all models), never its rank. Past 8 -> grey "other".
-  const color = (m) => { const i = D.models.indexOf(m); return "var(" + (i >= 0 && i < 8 ? "--s" + (i + 1) : "--other") + ")"; };
   const info = (m) => D.model_info[m] || { label: m };
   const label = (m) => info(m).label || m;
+  // Effort variants of one model share a base, and the base owns the colour (fixed order, never by rank).
+  const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+  const baseOf = (m) => info(m).base || label(m);
+  const effortOf = (m) => info(m).effort || info(m).thinking || "default";
+  const ALL_BASES = uniq(D.models.map(baseOf));
+  const baseColor = (b) => { const i = ALL_BASES.indexOf(b); return "var(" + (i >= 0 && i < 8 ? "--s" + (i + 1) : "--other") + ")"; };
+  const effRank = (e) => { const i = EFFORTS.indexOf(e); return i < 0 ? 2 : i; };
+  const baseSwatch = (b) => `<i class="sw" style="background:${baseColor(b)}"></i>`;
+  const color = (m) => baseColor(baseOf(m));
   const ACCESS = { cli: "via CLI (subscription)", api: "API (pay per token)", local: "Local (this Mac)" };
   const taskTitle = (t) => (D.tasks[t] || {}).title || t;
   const FIELD = { math: "Math", reasoning: "Science reasoning", knowledge: "Knowledge", instruction_following: "Instruction following", private: "Private", hard_reasoning: "Hard reasoning", vision: "Vision", frontier: "Frontier knowledge" };
@@ -212,7 +220,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         agr: mean(rs.filter((r) => r.agreement_pct != null).map((r) => r.agreement_pct)),
         samples, tiers: uniq(rs.map((r) => r.tier)), date: rs.map((r) => r.date).sort().pop(),
       };
-    }).sort((a, b) => (b.index ?? -1) - (a.index ?? -1));
+    }).sort((a, b) => b.k - a.k || (b.index ?? -1) - (a.index ?? -1));
   }
   function rank(aggs, m, key, higher) {
     const vals = aggs.filter((a) => a[key] != null).sort((a, b) => higher ? b[key] - a[key] : a[key] - b[key]);
@@ -255,6 +263,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
   // Sorted vertical bars, value on top, model name below. A focus model dims every other bar.
   function bars(items, o) {
     return (W) => {
+      if (items.length > 6) return hbars(items, o, W);
       const H = o.h || 250, top = 24, bottom = 62, L = 6, R = 6;
       const have = items.filter((d) => d.v != null).sort((a, b) => o.higher ? b.v - a.v : a.v - b.v);
       const list = have.concat(items.filter((d) => d.v == null));
@@ -288,6 +297,37 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
       s += `<line x1="${L}" x2="${W - R}" y1="${base}" y2="${base}" style="stroke:var(--axis)"/>`;
       return s + "</svg>";
     };
+  }
+
+  // Many items: one row each, name on the left, value after the bar. Same sort, colours and tooltips as bars().
+  function hbars(items, o, W) {
+    const have = items.filter((d) => d.v != null).sort((a, b) => o.higher ? b.v - a.v : a.v - b.v);
+    const list = have.concat(items.filter((d) => d.v == null));
+    const row = 24, top = 6, LW = Math.min(230, W * 0.42), R = 52, H = top + row * list.length + 6;
+    const vmax = o.max || Math.max(...have.map((d) => o.ci && d.hi != null ? d.hi : d.v), 1e-9) * 1.05;
+    const x = (v) => LW + (W - LW - R) * v / vmax;
+    let s = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.aria)}">`;
+    [0.25, 0.5, 0.75, 1].forEach((f) => { const gx = x(vmax * f); s += `<line x1="${gx}" x2="${gx}" y1="${top}" y2="${H - 6}" style="stroke:var(--grid)" stroke-dasharray="2 4"/>`; });
+    list.forEach((d, i) => {
+      const cy = top + row * i + row / 2, dim = o.focus && d.model !== o.focus ? ' opacity="0.3"' : "", bold = o.focus === d.model ? ' font-weight="600"' : "";
+      let name = label(d.model); while (name.length > 4 && name.length * 6.3 > LW - 10) name = name.slice(0, -2);
+      if (name !== label(d.model)) name = name.trimEnd() + "...";
+      s += T(LW - 8, cy + 4, name, `text-anchor="end" font-size="11.5"${bold} style="fill:var(--ink-2)"${dim}`);
+      if (d.v == null) s += T(LW + 4, cy + 4, d.nullText || "n/a", `font-size="11" style="fill:var(--muted)"${dim}`);
+      else {
+        const w = Math.max(x(d.v) - LW, 1.5), h = 14, r = Math.min(3, w);
+        s += `<path d="M${LW},${cy - h / 2}H${LW + w - r}Q${LW + w},${cy - h / 2} ${LW + w},${cy - h / 2 + r}V${cy + h / 2 - r}Q${LW + w},${cy + h / 2} ${LW + w - r},${cy + h / 2}H${LW}Z" style="fill:${color(d.model)}"${dim}/>`;
+        let vx = LW + w;
+        if (o.ci && d.lo != null) {
+          s += `<g style="stroke:var(--ink-2)" stroke-width="1.3"${dim}><line x1="${x(d.lo)}" x2="${x(d.hi)}" y1="${cy}" y2="${cy}"/><line x1="${x(d.lo)}" x2="${x(d.lo)}" y1="${cy - 4}" y2="${cy + 4}"/><line x1="${x(d.hi)}" x2="${x(d.hi)}" y1="${cy - 4}" y2="${cy + 4}"/></g>`;
+          vx = Math.max(vx, x(d.hi));
+        }
+        s += T(vx + 6, cy + 4, o.fmt(d.v), `font-size="11.5"${bold} style="fill:var(--ink)"${dim}`);
+      }
+      s += `<rect x="0" y="${cy - row / 2}" width="${W}" height="${row}" fill="transparent" data-tip="${esc(d.tip || "")}"/>`;
+    });
+    s += `<line x1="${LW}" x2="${LW}" y1="${top}" y2="${H - 6}" style="stroke:var(--axis)"/>`;
+    return s + "</svg>";
   }
 
   function niceLogTicks(lo, hi) {
@@ -332,11 +372,21 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
       const sorted = [...pts].sort((a, b) => a.x - b.x || b.y - a.y), front = [];
       sorted.forEach((p) => { if (!front.length || p.y > front[front.length - 1].y) front.push(p); });
       if (front.length >= 2) s += `<path d="${front.map((p, i) => (i ? "L" : "M") + x(p.x) + "," + y(p.y)).join("")}" fill="none" style="stroke:var(--ink-2)" stroke-width="1.5" stroke-dasharray="2 4"/>`;
-      pts.forEach((p) => {
+      const placed = pts.map((p) => ({ x0: x(p.x) - 8, x1: x(p.x) + 8, y0: y(p.y) - 8, y1: y(p.y) + 8 }));  // dots, then labels as drawn
+      const clear = (b) => placed.every((q) => b.x1 < q.x0 || b.x0 > q.x1 || b.y1 < q.y0 || b.y0 > q.y1);
+      [...pts].sort((a, b) => y(a.y) - y(b.y)).forEach((p) => {
         const px = x(p.x), py = y(p.y), dim = o.focus && p.model !== o.focus ? ' opacity="0.35"' : "";
-        const right = px > W - 160;
+        const right = px > W - 160, tw = label(p.model).length * 6.6, lx = right ? px - 11 : px + 11;
+        let ly = py + 4, box;
+        for (let k = 0; k < 8; k++) {
+          box = { x0: right ? lx - tw : lx, x1: right ? lx : lx + tw, y0: ly - 11, y1: ly + 2 };
+          if (clear(box)) break;
+          ly += 14;
+        }
+        placed.push(box);
         s += `<circle cx="${px}" cy="${py}" r="${o.focus === p.model ? 7.5 : 6}" style="fill:${color(p.model)};stroke:var(--surface)" stroke-width="2"${dim}/>`;
-        s += T(right ? px - 11 : px + 11, py + 4, label(p.model), `font-size="12" ${right ? 'text-anchor="end"' : ""} ${o.focus === p.model ? 'font-weight="600"' : ""} style="fill:var(--ink)"${dim}`);
+        if (ly !== py + 4) s += `<line x1="${px}" y1="${py}" x2="${right ? lx + 2 : lx - 2}" y2="${ly - 4}" style="stroke:var(--muted)" stroke-width="0.8"${dim}/>`;
+        s += T(lx, ly, label(p.model), `font-size="12" ${right ? 'text-anchor="end"' : ""} ${o.focus === p.model ? 'font-weight="600"' : ""} style="fill:var(--ink)"${dim}`);
         s += `<circle cx="${px}" cy="${py}" r="16" fill="transparent" data-tip="${esc(p.tip)}"/>`;
       });
       return s + "</svg>";
@@ -346,7 +396,7 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
   // Score over time for one task, one line per model.
   function history(task, focus) {
     return (W) => {
-      const rows = D.results.filter(inTier).filter((r) => r.task === task && r.score_pct != null).sort((a, b) => a.date < b.date ? -1 : 1);
+      const rows = repeated(D.results.filter(inTier)).filter((r) => r.task === task && r.score_pct != null).sort((a, b) => a.date < b.date ? -1 : 1);
       if (!rows.length) return '<div class="empty">No runs yet.</div>';
       const H = 190, L = 34, R = 14, top = 10, bottom = 26;
       const times = rows.map((r) => Date.parse(r.date));
@@ -386,18 +436,12 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
         ${chart(bars(timeItems, { higher: false, fmt: secs, focus, aria: "Time per question by model" }), 250)}</div>
       <div class="card"><h3><i class="sq" style="background:var(--s2)"></i>Cost per question</h3>
         <div class="desc">Real API spend per answer. Subscription (CLI) models show "quota". Lower is better.</div>
-        ${chart(bars(costItems, { higher: false, fmt: usd, focus, aria: "Cost per question by model" }), 250)}</div>
+        ${costItems.some((d) => d.v != null) ? chart(bars(costItems, { higher: false, fmt: usd, focus, aria: "Cost per question by model" }), 250)
+          : '<div class="empty">All models here ran on subscription quota (CLI), so there is no per-question price.</div>'}</div>
     </div>`;
   }
 
-  // ---------- thinking levels: effort variants of one model share a base and a colour ----------
-  const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
-  const baseOf = (m) => info(m).base || label(m);
-  const effortOf = (m) => info(m).effort || info(m).thinking || "default";
-  const ALL_BASES = uniq(D.models.map(baseOf));
-  const baseColor = (b) => { const i = ALL_BASES.indexOf(b); return "var(" + (i >= 0 && i < 8 ? "--s" + (i + 1) : "--other") + ")"; };
-  const effRank = (e) => { const i = EFFORTS.indexOf(e); return i < 0 ? 2 : i; };
-  const baseSwatch = (b) => `<i class="sw" style="background:${baseColor(b)}"></i>`;
+  // ---------- thinking levels ----------
 
   function bestTable(rows) {
     const tasks = uniq(rows.map((r) => r.task)).sort((a, b) => field(a).localeCompare(field(b)) || a.localeCompare(b));
@@ -510,13 +554,18 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
       ${left.length ? `<p class="note">Not plotted (no value on this axis): ${esc(left.join(", "))}.</p>` : ""}</div>`;
   }
 
+  // Only (model, task) pairs run at least twice can show a drop; single runs are left out.
+  function repeated(rows) {
+    const n = {}; rows.forEach((r) => { const k = r.model + "|" + r.task; n[k] = (n[k] || 0) + 1; });
+    return rows.filter((r) => n[r.model + "|" + r.task] > 1);
+  }
   function historyCards(focus) {
-    const rows = D.results.filter(inTier);
+    const rows = repeated(D.results.filter(inTier));
     const tasks = uniq(rows.filter((r) => !focus || r.model === focus).map((r) => r.task)).sort();
-    if (!tasks.length) return '<div class="empty">No runs yet.</div>';
+    if (!tasks.length) return '<div class="empty">No model has run the same task twice in this tier yet, so there is nothing to compare over time.</div>';
     const models = D.models.filter((m) => rows.some((r) => r.model === m));
     return legend(models) + `<div class="cards2">${tasks.map((t) => `<div class="card"><h4>${esc(taskTitle(t))}</h4>
-      <div class="desc">% correct per run. A drop below the earlier run's interval is worth a re-run.</div>${chart(history(t, focus), 190)}</div>`).join("")}</div>`;
+      <div class="desc">% correct per run, for models that ran this task more than once. A drop below the earlier run's interval is worth a re-run.</div>${chart(history(t, focus), 190)}</div>`).join("")}</div>`;
   }
 
   function leaderboard(aggs, focus) {
@@ -578,6 +627,8 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
     const tasks = uniq(rows.map((r) => r.task)).sort();
     const answers = rows.reduce((s, r) => s + r.samples, 0), errors = rows.reduce((s, r) => s + r.errors, 0);
     const spend = D.runs.filter((r) => S.tier === "all" || r.tier === S.tier).reduce((s, r) => s + (r.spend_usd || 0), 0);
+    const maxK = Math.max(0, ...aggs.map((a) => a.k)), full = aggs.filter((a) => a.k === maxK), part = aggs.length - full.length;
+    const fullNote = part ? `<p class="note">Only the ${full.length} model(s) that ran all ${maxK} tasks are compared here, so every score covers the same tests. ${part} other model or thinking-level run(s) covered fewer tasks: see "Best per benchmark", "Thinking levels" and the leaderboard.</p>` : "";
     const lead = aggs[0], second = aggs[1];
     let story = `<p>${aggs.length} model(s) tested on ${tasks.length} task(s) in the <b>${esc(S.tier === "all" ? "latest of any" : S.tier)}</b> tier, ${answers} answers in total.</p>`;
     if (lead) story += `<p>${esc(label(lead.model))} leads with a Bench score of ${pct(lead.index)}${second ? `, ${f1(lead.index - second.index)} points ahead of ${esc(label(second.model))} (${pct(second.index)})` : ""}. Differences smaller than the 95% intervals in "Score by task" are not real rankings.</p>`;
@@ -598,11 +649,11 @@ footer { color: var(--muted); font-size: 12px; padding: 40px 0 60px; }
     <div class="wrap"><div class="body">
       ${sideNav([["s-compare", "Model comparison"], ["s-best", "Best per benchmark"], ["s-effort", "Thinking levels"], ["s-task", "Score by task"], ["s-scatter", "Score vs cost"], ["s-history", "Degradation watch"], ["s-board", "Leaderboard"], ["s-runs", "Runs"]])}
       <main>
-        ${sec("s-compare", "Model comparison")}${comparisonCards(aggs)}
+        ${sec("s-compare", "Model comparison")}${comparisonCards(full)}${fullNote}
         ${sec("s-best", "Best score per benchmark")}${bestTable(rows)}
         ${sec("s-effort", "Thinking levels: accuracy vs time")}${effortCards(rows)}
         ${sec("s-task", "Score by task")}${byTaskCards(rows)}
-        ${sec("s-scatter", "Score vs cost and speed")}${scatterCard(aggs)}
+        ${sec("s-scatter", "Score vs cost and speed")}${scatterCard(full)}${fullNote}
         ${sec("s-history", "Degradation watch")}${historyCards()}
         ${sec("s-board", "Leaderboard")}${leaderboard(aggs)}
         ${sec("s-runs", "Runs")}${runsTable()}
