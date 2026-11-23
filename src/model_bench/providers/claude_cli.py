@@ -86,7 +86,7 @@ def claude_stdin(prompt: str, images: list[Path]) -> str:
         for p in images
     ]
     content.append({"type": "text", "text": prompt})
-    return json.dumps({"type": "user", "message": {"role": "user", "content": content}})
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
 
 
 def parse_claude_stream(stdout: str, stderr: str, code: int) -> tuple[str, ModelUsage, str]:

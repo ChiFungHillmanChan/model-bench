@@ -340,3 +340,8 @@ def test_codex_argv_images_before_stdin(tmp_path):
     argv = codex_argv("gpt-x", tmp_path / "l", None, images=[img])
     assert argv[-1] == "-"
     assert argv[argv.index("-i") + 1] == str(img)
+
+
+def test_claude_stdin_ends_with_newline():
+    # stream-json input is newline-delimited; the last message must be terminated
+    assert claude_stdin("hi", []).endswith("\n")
